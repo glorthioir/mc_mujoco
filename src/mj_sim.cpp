@@ -167,14 +167,8 @@ MjSimImpl::MjSimImpl(const MjConfiguration & config)
   }
 
   // load all robots named in mc-rtc config
-#if MC_RTC_VERSION_MAJOR > 1
-  for(const auto & r_ptr : controller->robots())
-  {
-    const auto & r = *r_ptr;
-#else
   for(const auto & r : controller->robots())
   {
-#endif
     const auto & robot_cfg_path = get_robot_cfg_path(r.module().name);
     if(robot_cfg_path.size())
     {
@@ -615,9 +609,9 @@ void MjSimImpl::makeDatastoreCalls()
 
 void MjSimImpl::startSimulation()
 {
-  setSimulationInitialState();
   if(!config.with_controller)
   {
+    setSimulationInitialState();
     controller.reset();
     return;
   }
@@ -631,17 +625,19 @@ void MjSimImpl::startSimulation()
   mc_rtc::log::info("[mc_mujoco] MC-RTC timestep: {}. MJ timestep: {}", controller->timestep(), simTimestep);
   mc_rtc::log::info("[mc_mujoco] Hence, Frameskip: {}", frameskip_);
 
-  for(const auto & r : robots)
+  for(auto & r : robots)
   {
+    r.initialize(model, controller->robot(r.name));
     controller->setEncoderValues(r.name, r.encoders);
   }
   for(const auto & r : robots)
   {
-    init_qs_[r.name] = r.encoders;
+    init_qs_[r.name] = controller->robot(r.name).encoderValues();
     init_pos_[r.name] = controller->controller().robot(r.name).posW();
   }
   controller->init(init_qs_, init_pos_);
   controller->running = true;
+  setSimulationInitialState();
 }
 
 void MjSimImpl::updateTeleopData(){
