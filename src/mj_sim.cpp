@@ -167,14 +167,8 @@ MjSimImpl::MjSimImpl(const MjConfiguration & config)
   }
 
   // load all robots named in mc-rtc config
-#if MC_RTC_VERSION_MAJOR > 1
-  for(const auto & r_ptr : controller->robots())
-  {
-    const auto & r = *r_ptr;
-#else
   for(const auto & r : controller->robots())
   {
-#endif
     const auto & robot_cfg_path = get_robot_cfg_path(r.module().name);
     if(robot_cfg_path.size())
     {
@@ -445,13 +439,13 @@ void MjSimImpl::makeDatastoreCalls()
 {
 
   // store the name, position, and orientation of the object from the simulation into the DataStore
-  std::vector<std::string> objectsNames;
+  std::vector<std::string> goalsName;
   std::vector<double> objectsPositions;
   std::vector<double> objectsOrientations;
   std::vector<double> handsPositions;
   std::vector<double> handsOrientations;
-  std::unordered_map<std::string, int> mapOfObjectsNames;
   listOfHandIndex.resize(0);
+  int j = 0;
 
   for (unsigned int i = 0; i < model->nbody; i++){
 
@@ -459,7 +453,7 @@ void MjSimImpl::makeDatastoreCalls()
     if (i > 0 && i < 10 && objectName.compare("longtable_base_link") != 0)
     {
       objectName = objectName.substr(0, objectName.find('_'));
-      objectsNames.push_back(objectName);
+      goalsName.push_back("grab_"+objectName);
       objectsPositions.push_back(data->xpos[i*3]);
       objectsPositions.push_back(data->xpos[i*3+1]);
       objectsPositions.push_back(data->xpos[i*3+2]);
@@ -468,7 +462,8 @@ void MjSimImpl::makeDatastoreCalls()
       objectsOrientations.push_back(data->xquat[i*4+2]);
       objectsOrientations.push_back(data->xquat[i*4+3]);
       listOfObjectIndex.push_back(i);
-      mapOfObjectsNames[objectName] = i;
+      mapOfObjectsNames[objectName] = j;
+      j++;
       std::cout << "Name: "<< objectName << ", id: " << i;
       std::cout << ", position: (" << data->xpos[i*3] << ", " << data->xpos[i*3+1] << ", " << data->xpos[i*3+2] << ")";
       std::cout << " and orientation: (" << data->xquat[i*4] << ", " << data->xquat[i*4+1] << ", " << data->xquat[i*4+2] << ", " << data->xquat[i*4+3] <<")\n";
@@ -499,7 +494,7 @@ void MjSimImpl::makeDatastoreCalls()
   for (unsigned int i = 0; i < model->ngeom; i++)
   {
     const char* geomNameTmp = mj_id2name(model, mjOBJ_GEOM, i);
-    if(geomNameTmp != NULL)
+    if(geomNameTmp != NULL and strcmp(geomNameTmp, "ground_floor") != 0)
     {
       std::cout << "Name: "<< geomNameTmp << ", id: " << i;
       Eigen::Matrix3d rotationMatrix;
@@ -522,14 +517,30 @@ void MjSimImpl::makeDatastoreCalls()
     }
   }
 
-  controller->controller().datastore().make<std::vector<std::string>>("objectsNames", objectsNames);
+  //For advanced goals (pour, cut and cook)
+  int goalIndex = mapOfGoalPositions.size();
+  int cupIndex = mapOfObjectsNames["cup"]*3;
+  int potatoIndex = mapOfObjectsNames["potato1"]*3;
+  int panIndex = mapOfObjectsNames["pan"]*3;
+  std::vector<double> cupPos = {objectsPositions[cupIndex], objectsPositions[cupIndex+1], objectsPositions[cupIndex+2]};
+  mapOfGoalPositions[goalIndex] = cupPos;
+  mapOfGoalPositions[goalIndex][2] += 0.10; // We want the bottle about 10 cm above the cup
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the pitch about 10 cm above the cup
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = {objectsPositions[potatoIndex], objectsPositions[potatoIndex+1], objectsPositions[potatoIndex+2]+0.10}; // Knife on the top of the potato
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = {objectsPositions[panIndex], objectsPositions[panIndex+1], objectsPositions[panIndex+2]+0.08}; // Potato in the frypan
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1];
+
+  controller->controller().datastore().make<std::vector<std::string>>("goalsName", goalsName);
   controller->controller().datastore().make<std::vector<double>>("objectsPositions", objectsPositions);
   controller->controller().datastore().make<std::vector<double>>("objectsOrientations", objectsOrientations);
   controller->controller().datastore().make<std::vector<double>>("handsPositions", handsPositions);
   controller->controller().datastore().make<std::vector<double>>("handsOrientations", handsOrientations);
   controller->controller().datastore().make<std::unordered_map<int, std::vector<double>>>("mapOfGoalPositions", mapOfGoalPositions);
   controller->controller().datastore().make<std::unordered_map<int, std::vector<double>>>("mapOfGoalOrientations", mapOfGoalOrientations);
-  mc_rtc::log::info("Reaches Very first step");
 
   for(auto & r : robots)
   {
@@ -615,9 +626,9 @@ void MjSimImpl::makeDatastoreCalls()
 
 void MjSimImpl::startSimulation()
 {
-  setSimulationInitialState();
   if(!config.with_controller)
   {
+    setSimulationInitialState();
     controller.reset();
     return;
   }
@@ -631,17 +642,19 @@ void MjSimImpl::startSimulation()
   mc_rtc::log::info("[mc_mujoco] MC-RTC timestep: {}. MJ timestep: {}", controller->timestep(), simTimestep);
   mc_rtc::log::info("[mc_mujoco] Hence, Frameskip: {}", frameskip_);
 
-  for(const auto & r : robots)
+  for(auto & r : robots)
   {
+    r.initialize(model, controller->robot(r.name));
     controller->setEncoderValues(r.name, r.encoders);
   }
   for(const auto & r : robots)
   {
-    init_qs_[r.name] = r.encoders;
+    init_qs_[r.name] = controller->robot(r.name).encoderValues();
     init_pos_[r.name] = controller->controller().robot(r.name).posW();
   }
   controller->init(init_qs_, init_pos_);
   controller->running = true;
+  setSimulationInitialState();
 }
 
 void MjSimImpl::updateTeleopData(){
@@ -651,6 +664,7 @@ void MjSimImpl::updateTeleopData(){
   auto & handsOrientations = controller->controller().datastore().get<std::vector<double>>("handsOrientations");
   auto & mapOfGoalPositions = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalPositions");
   auto & mapOfGoalOrientations = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalOrientations");
+
   for (unsigned int i = 0; i < listOfObjectIndex.size(); i++){
     int index = listOfObjectIndex[i]*3;
     objectsPositions[i*3] = data->xpos[index];
@@ -661,16 +675,18 @@ void MjSimImpl::updateTeleopData(){
     objectsOrientations[i*4+1] = data->xquat[index+1];
     objectsOrientations[i*4+2] = data->xquat[index+2];
     objectsOrientations[i*4+3] = data->xquat[index+3];
-    int j = 0;
+    unsigned int j = 0;
+
     while(j < mapOfGoalPositions[i].size()/3)
     {
-      int geomIndex = mapOfGeomIndex[i][j];
+      int geomIndex = mapOfGeomIndex[i][j]*3;
+      int geomOrientationIndex = geomIndex*3;
       mapOfGoalPositions[i][j*3] = data->geom_xpos[geomIndex];
       mapOfGoalPositions[i][j*3+1] = data->geom_xpos[geomIndex+1];
       mapOfGoalPositions[i][j*3+2] = data->geom_xpos[geomIndex+2];
       Eigen::Matrix3d rotationMatrix;
-      rotationMatrix << data->geom_xmat[geomIndex*9], data->geom_xmat[geomIndex*9+1], data->geom_xmat[geomIndex*9+2], data->geom_xmat[geomIndex*9+3], data->geom_xmat[geomIndex*9+4],
-                        data->geom_xmat[geomIndex*9+5], data->geom_xmat[geomIndex*9+6], data->geom_xmat[geomIndex*9+7], data->geom_xmat[geomIndex*9+8]; 
+      rotationMatrix << data->geom_xmat[geomOrientationIndex], data->geom_xmat[geomOrientationIndex+1], data->geom_xmat[geomOrientationIndex+2], data->geom_xmat[geomOrientationIndex+3], data->geom_xmat[geomOrientationIndex+4],
+                        data->geom_xmat[geomOrientationIndex+5], data->geom_xmat[geomOrientationIndex+6], data->geom_xmat[geomOrientationIndex+7], data->geom_xmat[geomOrientationIndex+8]; 
       Eigen::Quaterniond geomQuat(rotationMatrix);
       mapOfGoalOrientations[i][j*4] = geomQuat.w();
       mapOfGoalOrientations[i][j*4+1] = geomQuat.x();
@@ -690,6 +706,25 @@ void MjSimImpl::updateTeleopData(){
     handsOrientations[i*4+2] = data->xquat[index+2];
     handsOrientations[i*4+3] = data->xquat[index+3];
   }
+
+  //For advanced goals (pour, cut and cook)
+  int goalIndex = listOfObjectIndex.size();
+  int cupIndex = mapOfObjectsNames["cup"]*3;
+  int potatoIndex = mapOfObjectsNames["potato1"]*3;
+  int panIndex = mapOfObjectsNames["pan"]*3;
+  std::vector<double> cupPos = {objectsPositions[cupIndex], objectsPositions[cupIndex+1], objectsPositions[cupIndex+2]};
+  mapOfGoalPositions[goalIndex] = cupPos;
+  mapOfGoalPositions[goalIndex][2] += 0.10; // We want the bottle about 10 cm above the cup
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the pitch about 10 cm above the cup
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = {objectsPositions[potatoIndex], objectsPositions[potatoIndex+1], objectsPositions[potatoIndex+2]+0.10}; // Knife on the top of the potato
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = {objectsPositions[panIndex], objectsPositions[panIndex+1], objectsPositions[panIndex+2]+0.08}; // Potato in the frypan
+  goalIndex++;
+  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1];
+
+
 }
 
 void MjRobot::updateSensors(mc_control::MCGlobalController * gc, mjModel * model, mjData * data)
@@ -1005,7 +1040,7 @@ bool MjSimImpl::render()
   {
     client->update();
     client->draw2D(window);
-    //client->draw3D();
+    client->draw3D();
   }
   {
     auto right_margin = 5.0f;

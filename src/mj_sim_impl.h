@@ -169,6 +169,9 @@ private:
   std::vector<int> listOfObjectIndex;
   std::vector<int> listOfHandIndex;
   std::unordered_map<int, std::vector<int>> mapOfGeomIndex;
+  std::unordered_map<std::string, int> mapOfObjectsNames;
+  std::vector<bool> completedGoals;
+
 
 public:
   /** Configuration and data for the step-by-step mode */
