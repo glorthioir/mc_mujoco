@@ -64,6 +64,11 @@ A basic example of what you can do using this package is [here](https://github.c
   pages={1--5},
   year={2023},
   organization={IEEE}
+  author={Singh, Rohan P and Gergondet, Pierre and Kanehiro, Fumio},
+  booktitle={2023 IEEE/SICE International Symposium on System Integration (SII)},
+  pages={1--5},
+  year={2023},
+  organization={IEEE}
 }
 ```
 
