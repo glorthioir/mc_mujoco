@@ -1366,9 +1366,9 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
   mjrRect_& rect_window = uistate.rect[0];
   int height = rect_window.height;
   int width = rect_window.width;
+  
   unsigned char* rgbL = (unsigned char*)std::malloc(3*height*width);
   float* depthL = (float*)std::malloc(sizeof(float)*height*width);
-
   mjv_updateScene(model, data, &options, &pert, &camera, mjCAT_ALL, &scene);
   mjr_render(rect_window, &scene, &context);
   mjr_readPixels(rgbL, depthL, rect_window, &context);
@@ -1383,8 +1383,8 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
   // Create CV images from data
   cv::Mat rgb_image_left_flip(height, width, CV_8UC3, rgbL);
   cv::Mat rgb_image_right_flip(height, width, CV_8UC3, rgbR);
-  cv::Mat depth_image_left(height, width, CV_32FC1, depthL);
-  cv::Mat depth_image_right(height, width, CV_32FC1, depthR);
+  //cv::Mat depth_image_left(height, width, CV_32FC1, depthL);
+  //cv::Mat depth_image_right(height, width, CV_32FC1, depthR);
 
   // Need to flip the char* because of Mujoco reading the wrong way
   cv::Mat rgb_image_left;
@@ -1395,18 +1395,20 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
   // Convert CV images to ROS messages
   sensor_msgs::ImagePtr rgb_msg_left = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_left).toImageMsg();
   sensor_msgs::ImagePtr rgb_msg_right = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_right).toImageMsg();
-  sensor_msgs::ImagePtr depth_msg_left = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_left).toImageMsg();
-  sensor_msgs::ImagePtr depth_msg_right = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_right).toImageMsg();
+  //sensor_msgs::ImagePtr depth_msg_left = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_left).toImageMsg();
+  //sensor_msgs::ImagePtr depth_msg_right = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_right).toImageMsg();
   
   // Set ROS message header information
   rgb_msg_left->header.stamp = ros::Time::now();
   rgb_msg_right->header.stamp = ros::Time::now();
-  depth_msg_left->header.stamp = ros::Time::now();
-  depth_msg_right->header.stamp = ros::Time::now();
   rgb_msg_left->header.frame_id = "camera_rgb_left";
   rgb_msg_right->header.frame_id = "camera_rgb_right";
+  /*
+  depth_msg_left->header.stamp = ros::Time::now();
+  depth_msg_right->header.stamp = ros::Time::now();
   depth_msg_left->header.frame_id = "camera_depth_left";
   depth_msg_right->header.frame_id = "camera_depth_right";
+  */
 
   // Publish RGB and depth messages using CameraPublisher
   sensor_msgs::CameraInfoPtr camera_info_left(new sensor_msgs::CameraInfo());
@@ -1421,6 +1423,12 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
 
   camera.fixedcamid = initialCamera;
   camera.type = initialCameraType;
+
+  // Free malloc allocation
+  free(rgbL);
+  free(depthL);
+  free(rgbR);
+  free(depthR);
 
 }
 
