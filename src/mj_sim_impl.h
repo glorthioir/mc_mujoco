@@ -7,6 +7,8 @@
 #include "mujoco.h"
 
 #include <condition_variable>
+//#include <sl/Camera.hpp>
+#include <opencv2/opencv.hpp>
 
 namespace mc_mujoco
 {
@@ -164,13 +166,18 @@ private:
   /** Controller instance in this simulation, might be null if the controller is disabled */
   std::unique_ptr<mc_control::MCGlobalController> controller;
 
-  // Guillaume's variables for Assisted Teleop
+  // Variables for Assisted Teleop
   std::chrono::time_point<std::chrono::system_clock> timer;
   std::vector<int> listOfObjectIndex;
   std::vector<int> listOfHandIndex;
-  std::unordered_map<int, std::vector<int>> mapOfGeomIndex;
+  std::unordered_map<int, std::vector<int>> mapOfGrabbingGeomIndex;
   std::unordered_map<std::string, int> mapOfObjectsNames;
-  std::vector<bool> completedGoals;
+  std::unordered_map<int, std::string> mapOfGeoms;
+  std::unordered_map<int, std::string> mapOfHandGeoms;
+  std::unordered_map<std::string, bool> currentCollision;
+  std::unordered_map<std::string, double> currentCollisionTimer;
+  std::unordered_map<std::string, double> noContactTimer;
+  std::unordered_map<std::string, double> currentGoalTimer;
 
 
 public:
@@ -231,6 +238,9 @@ public:
   /** Objects in simulation */
   std::vector<MjObject> objects;
 
+  /*! Simulation wall clock time (seconds) */
+  double wallclock;
+
 private:
   /** Number of MuJoCo iteration since the start */
   size_t iterCount_ = 0;
@@ -254,7 +264,7 @@ public:
 
   void updateData();
 
-  void updateTeleopData();
+  void updateTeleopData(double deltaContact, double deltaTime, double deltaResetGoal);
 
   bool controlStep();
 
@@ -265,6 +275,10 @@ public:
   void updateScene();
 
   bool render();
+
+  void publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right);
+
+  //sl::Mat cvMat2slMat(cv::Mat &input); 
 
   void stopSimulation();
 

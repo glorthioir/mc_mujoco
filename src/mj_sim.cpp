@@ -24,6 +24,12 @@ namespace bfs = boost::filesystem;
 
 #include <mc_rtc/version.h>
 
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
+
+//using namespace sl;
 namespace mc_mujoco
 {
 
@@ -440,10 +446,12 @@ void MjSimImpl::makeDatastoreCalls()
 
   // store the name, position, and orientation of the object from the simulation into the DataStore
   std::vector<std::string> goalsName;
-  std::vector<double> objectsPositions;
-  std::vector<double> objectsOrientations;
+  std::vector<bool> completedGoals;
+  std::vector<double> targetPositions;
+  std::vector<double> targetOrientations;
   std::vector<double> handsPositions;
   std::vector<double> handsOrientations;
+  std::unordered_map<int, std::vector<int>> goalPreconditions;
   listOfHandIndex.resize(0);
   int j = 0;
 
@@ -454,13 +462,14 @@ void MjSimImpl::makeDatastoreCalls()
     {
       objectName = objectName.substr(0, objectName.find('_'));
       goalsName.push_back("grab_"+objectName);
-      objectsPositions.push_back(data->xpos[i*3]);
-      objectsPositions.push_back(data->xpos[i*3+1]);
-      objectsPositions.push_back(data->xpos[i*3+2]);
-      objectsOrientations.push_back(data->xquat[i*4]);
-      objectsOrientations.push_back(data->xquat[i*4+1]);
-      objectsOrientations.push_back(data->xquat[i*4+2]);
-      objectsOrientations.push_back(data->xquat[i*4+3]);
+      goalPreconditions[i] = {};
+      targetPositions.push_back(data->xpos[i*3]);
+      targetPositions.push_back(data->xpos[i*3+1]);
+      targetPositions.push_back(data->xpos[i*3+2]);
+      targetOrientations.push_back(data->xquat[i*4]);
+      targetOrientations.push_back(data->xquat[i*4+1]);
+      targetOrientations.push_back(data->xquat[i*4+2]);
+      targetOrientations.push_back(data->xquat[i*4+3]);
       listOfObjectIndex.push_back(i);
       mapOfObjectsNames[objectName] = j;
       j++;
@@ -490,11 +499,11 @@ void MjSimImpl::makeDatastoreCalls()
   std::unordered_map<int, std::vector<double>> mapOfGoalPositions;
   std::unordered_map<int, std::vector<double>> mapOfGoalOrientations;
 
-  std::cout << "List of geoms to grab in the sim:" << std::endl;
+  std::cout << "List of relevant geoms in the sim:" << std::endl;
   for (unsigned int i = 0; i < model->ngeom; i++)
   {
     const char* geomNameTmp = mj_id2name(model, mjOBJ_GEOM, i);
-    if(geomNameTmp != NULL and strcmp(geomNameTmp, "ground_floor") != 0)
+    if(geomNameTmp != NULL && strcmp(geomNameTmp, "ground_floor") != 0)
     {
       std::cout << "Name: "<< geomNameTmp << ", id: " << i;
       Eigen::Matrix3d rotationMatrix;
@@ -504,6 +513,20 @@ void MjSimImpl::makeDatastoreCalls()
       std::cout << ", position: (" << data->geom_xpos[i*3] << ", " << data->geom_xpos[i*3+1] << ", " << data->geom_xpos[i*3+2] << ")";
       std::cout << " and orientation: (" << geomQuat.w() << ", " << geomQuat.x() << ", " << geomQuat.y() << ", " << geomQuat.z() <<")\n";
       std::string geomName = geomNameTmp;
+      if(geomName.find("handContact") != std::string::npos)
+      {
+        mapOfHandGeoms[i] = "hand";
+        continue;
+      }
+      if(geomName.find("collision") != std::string::npos)
+      {
+        geomName = geomName.substr(0, geomName.find('_'));
+        mapOfGeoms[i] = geomName;
+        currentCollisionTimer[geomName] = 0.0;
+        noContactTimer[geomName] = 0.0;
+        currentCollision[geomName] = false;
+        continue;
+      }
       geomName = geomName.substr(0, geomName.find('_'));
       int objectIndex = mapOfObjectsNames[geomName];
       mapOfGoalPositions[objectIndex].push_back(data->geom_xpos[i*3]);
@@ -513,30 +536,82 @@ void MjSimImpl::makeDatastoreCalls()
       mapOfGoalOrientations[objectIndex].push_back(geomQuat.x());
       mapOfGoalOrientations[objectIndex].push_back(geomQuat.y());
       mapOfGoalOrientations[objectIndex].push_back(geomQuat.z());
-      mapOfGeomIndex[objectIndex].push_back(i);
+      mapOfGrabbingGeomIndex[objectIndex].push_back(i);
     }
   }
 
-  //For advanced goals (pour, cut and cook)
+  //-------- For advanced goals (pour, cut and cook) --------
+
+  goalsName.push_back("pour_pitch");
+  goalsName.push_back("pour_bottle");
+  goalsName.push_back("cut_potato");
+  goalsName.push_back("cook_potato1");
+  goalsName.push_back("cook_potato2");
   int goalIndex = mapOfGoalPositions.size();
+  goalPreconditions[goalIndex] = {mapOfObjectsNames["pitch"]};
+  goalPreconditions[goalIndex+1] = {mapOfObjectsNames["bottle"]};
+  goalPreconditions[goalIndex+2] = {mapOfObjectsNames["knife"]};
+  int potatoIndex = mapOfObjectsNames["potato1"];
+  goalPreconditions[goalIndex+3] = {potatoIndex};
+  goalPreconditions[goalIndex+4] = {mapOfObjectsNames["potato2"]};
+
+  // Maybe need to design a landmark table here
+
+  currentGoalTimer = {{"pour_pitch", 0.0}, {"pour_bottle", 0.0}, {"cut_potato", 0.0}, {"cook_potato1", 0.0}, {"cook_potato2", 0.0}};
   int cupIndex = mapOfObjectsNames["cup"]*3;
-  int potatoIndex = mapOfObjectsNames["potato1"]*3;
+  potatoIndex *= 3;
   int panIndex = mapOfObjectsNames["pan"]*3;
-  std::vector<double> cupPos = {objectsPositions[cupIndex], objectsPositions[cupIndex+1], objectsPositions[cupIndex+2]};
+  std::vector<double> cupPos = {targetPositions[cupIndex], targetPositions[cupIndex+1], targetPositions[cupIndex+2]};
+
   mapOfGoalPositions[goalIndex] = cupPos;
-  mapOfGoalPositions[goalIndex][2] += 0.10; // We want the bottle about 10 cm above the cup
+  mapOfGoalPositions[goalIndex][2] += 0.15; // We want the pitch about 20 cm above the cup
+  mapOfGoalOrientations[goalIndex] = {0.0, 0.0, 0.0, 0.0};
+  for(unsigned int i = 0; i < 3; ++i)
+    targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
+  for(unsigned int j = 0; j < 4; ++j)
+    targetOrientations.push_back(0.0);
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the pitch about 10 cm above the cup
+
+  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the bottle about 20 cm above the cup
+  mapOfGoalOrientations[goalIndex] = {0.0, 0.0, 0.0, 0.0};
+  for(unsigned int i = 0; i < 3; ++i)
+    targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
+  for(unsigned int j = 0; j < 4; ++j)
+    targetOrientations.push_back(0.0);
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = {objectsPositions[potatoIndex], objectsPositions[potatoIndex+1], objectsPositions[potatoIndex+2]+0.10}; // Knife on the top of the potato
+
+  mapOfGoalPositions[goalIndex] = {targetPositions[potatoIndex], targetPositions[potatoIndex+1], targetPositions[potatoIndex+2]+0.10}; // Knife on the top of the potato
+  mapOfGoalOrientations[goalIndex] = {0.0, 0.0, 0.0, 0.0};
+  for(unsigned int i = 0; i < 3; ++i)
+    targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
+  for(unsigned int j = 0; j < 4; ++j)
+    targetOrientations.push_back(0.0);
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = {objectsPositions[panIndex], objectsPositions[panIndex+1], objectsPositions[panIndex+2]+0.08}; // Potato in the frypan
+
+  mapOfGoalPositions[goalIndex] = {targetPositions[panIndex], targetPositions[panIndex+1], targetPositions[panIndex+2]+0.08}; // Potato in the frypan
+  mapOfGoalOrientations[goalIndex] = {0.0, 0.0, 0.0, 0.0};
+  for(unsigned int i = 0; i < 3; ++i)
+    targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
+  for(unsigned int j = 0; j < 4; ++j)
+    targetOrientations.push_back(0.0);
   goalIndex++;
+
   mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1];
+  mapOfGoalOrientations[goalIndex] = {0.0, 0.0, 0.0, 0.0};
+  for(unsigned int i = 0; i < 3; ++i)
+    targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
+  for(unsigned int j = 0; j < 4; ++j)
+    targetOrientations.push_back(0.0);
+
+  for(unsigned int i = 0; i < mapOfGoalPositions.size(); ++i)
+    completedGoals.push_back(false);
 
   controller->controller().datastore().make<std::vector<std::string>>("goalsName", goalsName);
-  controller->controller().datastore().make<std::vector<double>>("objectsPositions", objectsPositions);
-  controller->controller().datastore().make<std::vector<double>>("objectsOrientations", objectsOrientations);
+  controller->controller().datastore().make<std::vector<bool>>("completedGoals", completedGoals);
+  controller->controller().datastore().make<bool>("newGoalAchieved", false);
+  controller->controller().datastore().make<std::unordered_map<int, std::vector<int>>>("goalPreconditions", goalPreconditions);
+  controller->controller().datastore().make<std::vector<double>>("targetPositions", targetPositions);
+  controller->controller().datastore().make<std::vector<double>>("targetOrientations", targetOrientations);
   controller->controller().datastore().make<std::vector<double>>("handsPositions", handsPositions);
   controller->controller().datastore().make<std::vector<double>>("handsOrientations", handsOrientations);
   controller->controller().datastore().make<std::unordered_map<int, std::vector<double>>>("mapOfGoalPositions", mapOfGoalPositions);
@@ -657,29 +732,33 @@ void MjSimImpl::startSimulation()
   setSimulationInitialState();
 }
 
-void MjSimImpl::updateTeleopData(){
-  auto & objectsPositions = controller->controller().datastore().get<std::vector<double>>("objectsPositions");
-  auto & objectsOrientations = controller->controller().datastore().get<std::vector<double>>("objectsOrientations");
+void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double deltaResetGoal){
+  auto & completedGoals = controller->controller().datastore().get<std::vector<bool>>("completedGoals");
+  auto & newGoalAchieved = controller->controller().datastore().get<bool>("newGoalAchieved");
+  auto & targetPositions = controller->controller().datastore().get<std::vector<double>>("targetPositions");
+  auto & targetOrientations = controller->controller().datastore().get<std::vector<double>>("targetOrientations");
   auto & handsPositions = controller->controller().datastore().get<std::vector<double>>("handsPositions");
   auto & handsOrientations = controller->controller().datastore().get<std::vector<double>>("handsOrientations");
   auto & mapOfGoalPositions = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalPositions");
   auto & mapOfGoalOrientations = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalOrientations");
+  auto current_time = std::chrono::system_clock::now();
 
-  for (unsigned int i = 0; i < listOfObjectIndex.size(); i++){
+  for (unsigned int i = 0; i < listOfObjectIndex.size(); i++)
+  {
     int index = listOfObjectIndex[i]*3;
-    objectsPositions[i*3] = data->xpos[index];
-    objectsPositions[i*3+1] = data->xpos[index+1];
-    objectsPositions[i*3+2] = data->xpos[index+2];
+    targetPositions[i*3] = data->xpos[index];
+    targetPositions[i*3+1] = data->xpos[index+1];
+    targetPositions[i*3+2] = data->xpos[index+2];
     index = listOfObjectIndex[i]*4;
-    objectsOrientations[i*4] = data->xquat[index];
-    objectsOrientations[i*4+1] = data->xquat[index+1];
-    objectsOrientations[i*4+2] = data->xquat[index+2];
-    objectsOrientations[i*4+3] = data->xquat[index+3];
+    targetOrientations[i*4] = data->xquat[index];
+    targetOrientations[i*4+1] = data->xquat[index+1];
+    targetOrientations[i*4+2] = data->xquat[index+2];
+    targetOrientations[i*4+3] = data->xquat[index+3];
     unsigned int j = 0;
 
     while(j < mapOfGoalPositions[i].size()/3)
     {
-      int geomIndex = mapOfGeomIndex[i][j]*3;
+      int geomIndex = mapOfGrabbingGeomIndex[i][j]*3;
       int geomOrientationIndex = geomIndex*3;
       mapOfGoalPositions[i][j*3] = data->geom_xpos[geomIndex];
       mapOfGoalPositions[i][j*3+1] = data->geom_xpos[geomIndex+1];
@@ -695,7 +774,8 @@ void MjSimImpl::updateTeleopData(){
       j++; 
     }
   }
-  for (unsigned int i = 0; i < listOfHandIndex.size(); i++){
+  for (unsigned int i = 0; i < listOfHandIndex.size(); i++)
+  {
     int index = listOfHandIndex[i]*3;
     handsPositions[i*3] = data->xpos[index];
     handsPositions[i*3+1] = data->xpos[index+1];
@@ -711,19 +791,161 @@ void MjSimImpl::updateTeleopData(){
   int goalIndex = listOfObjectIndex.size();
   int cupIndex = mapOfObjectsNames["cup"]*3;
   int potatoIndex = mapOfObjectsNames["potato1"]*3;
+  int potatoIndex2 = mapOfObjectsNames["potato2"]*3;
   int panIndex = mapOfObjectsNames["pan"]*3;
-  std::vector<double> cupPos = {objectsPositions[cupIndex], objectsPositions[cupIndex+1], objectsPositions[cupIndex+2]};
+  int picthIndex = mapOfObjectsNames["pitch"]*3;
+  int bottleIndex = mapOfObjectsNames["bottle"]*3;
+  int knifeIndex = mapOfObjectsNames["knife"]*3;
+  std::chrono::duration<double> elapsed_time = std::chrono::system_clock::now() - current_time;
+
+  std::vector<double> cupPos = {targetPositions[cupIndex], targetPositions[cupIndex+1], targetPositions[cupIndex+2]};
   mapOfGoalPositions[goalIndex] = cupPos;
-  mapOfGoalPositions[goalIndex][2] += 0.10; // We want the bottle about 10 cm above the cup
+  mapOfGoalPositions[goalIndex][2] += 0.15; // We want the pitch about 20 cm above the cup
+  int newGoalIndex = goalIndex*3;
+  for(unsigned int cpt = 0; cpt < 3; ++cpt){
+    targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
+    newGoalIndex++;
+  }
+  double squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[picthIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[picthIndex]) + 
+                          (mapOfGoalPositions[goalIndex][1] - targetPositions[picthIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[picthIndex+1]) +
+                          (mapOfGoalPositions[goalIndex][2] - targetPositions[picthIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[picthIndex+2]);
+  if(squareDistance < 100.0){
+    currentGoalTimer["pour_pitch"] += elapsed_time.count();
+    if(currentGoalTimer["pour_pitch"] > deltaTime){
+      completedGoals[goalIndex] = true;
+      newGoalAchieved = true;
+    }
+  }
+  else
+    currentGoalTimer["pour_pitch"] = 0.0;
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the pitch about 10 cm above the cup
+  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the bottle about 20 cm above the cup
+  for(unsigned int cpt = 0; cpt < 3; ++cpt){
+    targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
+    newGoalIndex++;
+  }
+  squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[bottleIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[bottleIndex]) + 
+                          (mapOfGoalPositions[goalIndex][1] - targetPositions[bottleIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[bottleIndex+1]) +
+                          (mapOfGoalPositions[goalIndex][2] - targetPositions[bottleIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[bottleIndex+2]);
+  if(squareDistance < 200.0){
+    currentGoalTimer["pour_bottle"] += elapsed_time.count();
+    if(currentGoalTimer["pour_bottle"] > deltaTime){
+      completedGoals[goalIndex] = true;
+      newGoalAchieved = true;
+    }
+  }
+  else
+    currentGoalTimer["pour_bottle"] = 0.0;                         
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = {objectsPositions[potatoIndex], objectsPositions[potatoIndex+1], objectsPositions[potatoIndex+2]+0.10}; // Knife on the top of the potato
+  mapOfGoalPositions[goalIndex] = {targetPositions[potatoIndex], targetPositions[potatoIndex+1], targetPositions[potatoIndex+2]+0.10}; // Knife on the top of the potato
+  for(unsigned int cpt = 0; cpt < 3; ++cpt){
+    targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
+    newGoalIndex++;
+  }
+  squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[knifeIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[knifeIndex]) + 
+                          (mapOfGoalPositions[goalIndex][1] - targetPositions[knifeIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[knifeIndex+1]) +
+                          (mapOfGoalPositions[goalIndex][2] - targetPositions[knifeIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[knifeIndex+2]);
+  if(squareDistance < 200.0){
+    currentGoalTimer["cut_potato"] += elapsed_time.count();
+    if(currentGoalTimer["cut_potato"] > deltaTime){
+      completedGoals[goalIndex] = true;
+      newGoalAchieved = true;
+    }
+  }
+  else
+    currentGoalTimer["cut_potato"] = 0.0; 
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = {objectsPositions[panIndex], objectsPositions[panIndex+1], objectsPositions[panIndex+2]+0.08}; // Potato in the frypan
+  mapOfGoalPositions[goalIndex] = {targetPositions[panIndex], targetPositions[panIndex+1], targetPositions[panIndex+2]+0.08}; // Potato in the frypan
+  for(unsigned int cpt = 0; cpt < 3; ++cpt){
+    targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
+    newGoalIndex++;
+  }
+  squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex]) + 
+                          (mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1]) +
+                          (mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex+2]);                         
+  if(squareDistance < 36.0 && targetPositions[potatoIndex+2] > targetPositions[panIndex+2]){
+    currentGoalTimer["cook_potato1"] += elapsed_time.count();
+    if(currentGoalTimer["cook_potato1"] > deltaTime){
+      completedGoals[goalIndex] = true;
+      newGoalAchieved = true;
+    }
+  }
+  else
+    currentGoalTimer["cook_potato1"] = 0.0; 
   goalIndex++;
   mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1];
+  for(unsigned int cpt = 0; cpt < 3; ++cpt){
+    targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
+    newGoalIndex++;
+  }
+  squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex2])*(mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex2]) + 
+                          (mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex2+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1]) +
+                          (mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex2+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex2+2]);
+  if(squareDistance < 36.0 && targetPositions[potatoIndex2+2] > targetPositions[panIndex+2]){
+    currentGoalTimer["cook_potato2"] += elapsed_time.count();
+    if(currentGoalTimer["cook_potato2"] > deltaTime){
+      completedGoals[goalIndex] = true;
+      newGoalAchieved = true;
+    }
+  }
+  else
+    currentGoalTimer["cook_potato2"] = 0.0;                           
 
+  for(unsigned int i = 0; i < data->ncon; i++)
+  {
+    int firstGeomID = data->contact[i].geom1;
+    int secondGeomID = data->contact[i].geom2;
+    if(mapOfHandGeoms.find(firstGeomID) != mapOfHandGeoms.end())
+    {
+      if(mapOfGeoms.find(secondGeomID) != mapOfGeoms.end())
+      {
+        std::string secondGeom = mapOfGeoms[secondGeomID];
+        currentCollision[secondGeom] = true;
+        elapsed_time = std::chrono::system_clock::now() - current_time;
+        currentCollisionTimer[secondGeom] += elapsed_time.count();
+        noContactTimer[secondGeom] = 0.0;
+      }
+    }
+    else if(mapOfHandGeoms.find(secondGeomID) != mapOfHandGeoms.end())
+    {
+      if(mapOfGeoms.find(firstGeomID) != mapOfGeoms.end())
+      {
+        std::string firstGeom = mapOfGeoms[firstGeomID];
+        currentCollision[firstGeom] = true;
+        elapsed_time = std::chrono::system_clock::now() - current_time;
+        currentCollisionTimer[firstGeom] += elapsed_time.count();
+        noContactTimer[firstGeom] = 0.0;
+      }
+    }
+  }
+
+  for(auto i = currentCollision.begin(); i != currentCollision.end(); i++)
+  {
+    if(!i->second)
+    {
+      currentCollisionTimer[i->first] = 0.0;
+      
+      if(completedGoals[mapOfObjectsNames[i->first]] == true)
+      {
+        if(noContactTimer[i->first] < deltaResetGoal)
+        {
+          elapsed_time = std::chrono::system_clock::now() - current_time;
+          noContactTimer[i->first] += elapsed_time.count();
+        }
+        else
+        {
+          completedGoals[mapOfObjectsNames[i->first]] = false;
+          noContactTimer[i->first] = 0.0;
+        }
+      }
+
+    }
+    else if(currentCollisionTimer[i->first] > deltaContact)
+    {
+      completedGoals[mapOfObjectsNames[i->first]] = true;
+      newGoalAchieved = true;
+    }
+  }
 
 }
 
@@ -817,7 +1039,7 @@ void MjSimImpl::updateData()
   std::chrono::duration<double> elapsed_time = current_time - timer;
   if (elapsed_time.count() > 0.250)
   {
-    updateTeleopData();
+    updateTeleopData(3.0, 2.0, 2.0);
     timer = std::chrono::system_clock::now();
   }
 }
@@ -925,6 +1147,8 @@ void MjSimImpl::simStep()
   // take one step in simulation
   // model.opt.timestep will be used here
   mj_step(model, data);
+
+  wallclock = data->time;
 }
 
 void MjSimImpl::resetSimulation(const std::map<std::string, std::vector<double>> & reset_qs,
@@ -1062,6 +1286,7 @@ bool MjSimImpl::render()
     }
     ImGui::Text("Average sim time: %.2fμs", mj_sim_dt_average);
     ImGui::Text("Simulation/Real time: %.2f", mj_sim_dt_average / (1e6 * model->opt.timestep));
+    ImGui::Text("Wallclock time: %.2fs", wallclock);
     if(ImGui::Checkbox("Sync with real-time", &config.sync_real_time))
     {
       if(config.sync_real_time)
@@ -1131,6 +1356,74 @@ bool MjSimImpl::render()
   return !glfwWindowShouldClose(window);
 }
 
+void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right)
+{
+  int initialCameraType = camera.type;
+  int initialCamera = camera.fixedcamid;
+
+  camera.fixedcamid = 0;
+  camera.type = mjCAMERA_FIXED;
+  mjrRect_& rect_window = uistate.rect[0];
+  int height = rect_window.height;
+  int width = rect_window.width;
+  unsigned char* rgbL = (unsigned char*)std::malloc(3*height*width);
+  float* depthL = (float*)std::malloc(sizeof(float)*height*width);
+
+  mjv_updateScene(model, data, &options, &pert, &camera, mjCAT_ALL, &scene);
+  mjr_render(rect_window, &scene, &context);
+  mjr_readPixels(rgbL, depthL, rect_window, &context);
+  
+  camera.fixedcamid = 1;
+  unsigned char* rgbR = (unsigned char*)std::malloc(3*height*width);
+  float* depthR = (float*)std::malloc(sizeof(float)*height*width);
+  mjv_updateScene(model, data, &options, &pert, &camera, mjCAT_ALL, &scene);
+  mjr_render(rect_window, &scene, &context);
+  mjr_readPixels(rgbR, depthR, rect_window, &context);
+
+  // Create CV images from data
+  cv::Mat rgb_image_left_flip(height, width, CV_8UC3, rgbL);
+  cv::Mat rgb_image_right_flip(height, width, CV_8UC3, rgbR);
+  cv::Mat depth_image_left(height, width, CV_32FC1, depthL);
+  cv::Mat depth_image_right(height, width, CV_32FC1, depthR);
+
+  // Need to flip the char* because of Mujoco reading the wrong way
+  cv::Mat rgb_image_left;
+  cv::Mat rgb_image_right;
+  cv::flip(rgb_image_left_flip, rgb_image_left, 0);
+  cv::flip(rgb_image_right_flip, rgb_image_right, 0);
+
+  // Convert CV images to ROS messages
+  sensor_msgs::ImagePtr rgb_msg_left = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_left).toImageMsg();
+  sensor_msgs::ImagePtr rgb_msg_right = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_right).toImageMsg();
+  sensor_msgs::ImagePtr depth_msg_left = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_left).toImageMsg();
+  sensor_msgs::ImagePtr depth_msg_right = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_right).toImageMsg();
+  
+  // Set ROS message header information
+  rgb_msg_left->header.stamp = ros::Time::now();
+  rgb_msg_right->header.stamp = ros::Time::now();
+  depth_msg_left->header.stamp = ros::Time::now();
+  depth_msg_right->header.stamp = ros::Time::now();
+  rgb_msg_left->header.frame_id = "camera_rgb_left";
+  rgb_msg_right->header.frame_id = "camera_rgb_right";
+  depth_msg_left->header.frame_id = "camera_depth_left";
+  depth_msg_right->header.frame_id = "camera_depth_right";
+
+  // Publish RGB and depth messages using CameraPublisher
+  sensor_msgs::CameraInfoPtr camera_info_left(new sensor_msgs::CameraInfo());
+  camera_info_left->header.stamp = ros::Time::now();
+  camera_info_left->header.frame_id = "camera_rgb_left";
+  pub_rgb_left.publish(rgb_msg_left, camera_info_left);
+
+  sensor_msgs::CameraInfoPtr camera_info_right(new sensor_msgs::CameraInfo());
+  camera_info_right->header.stamp = ros::Time::now();
+  camera_info_right->header.frame_id = "camera_rgb_right";
+  pub_rgb_right.publish(rgb_msg_right, camera_info_right);
+
+  camera.fixedcamid = initialCamera;
+  camera.type = initialCameraType;
+
+}
+
 void MjSimImpl::stopSimulation() {}
 
 void MjSimImpl::saveGUISettings()
@@ -1172,9 +1465,30 @@ void MjSimImpl::saveGUISettings()
   visualize_c.add("visuals", static_cast<bool>(options.geomgroup[1]));
   visualize_c.add("contact-points", static_cast<bool>(options.flags[mjVIS_CONTACTPOINT]));
   visualize_c.add("contact-forces", static_cast<bool>(options.flags[mjVIS_CONTACTFORCE]));
+  visualize_c.add("contact-split", static_cast<bool>(options.flags[mjVIS_CONTACTSPLIT]));
   config.save(config_path);
   mc_rtc::log::success("[mc_mujoco] Configuration saved to {}", config_path);
 }
+
+/*
+sl::Mat MjSimImpl::cvMat2slMat(cv::Mat &input) 
+{
+    sl::MAT_TYPE sl_type;
+    switch (input.type()) {
+        case CV_32FC1: sl_type = sl::MAT_TYPE::F32_C1; break;
+        case CV_32FC2: sl_type = sl::MAT_TYPE::F32_C2; break;
+        case CV_32FC3: sl_type = sl::MAT_TYPE::F32_C3; break;
+        case CV_32FC4: sl_type = sl::MAT_TYPE::F32_C4; break;
+        case CV_8UC1: sl_type = sl::MAT_TYPE::U8_C1; break;
+        case CV_8UC2: sl_type = sl::MAT_TYPE::U8_C2; break;
+        case CV_8UC3: sl_type = sl::MAT_TYPE::U8_C3; break;
+        case CV_8UC4: sl_type = sl::MAT_TYPE::U8_C4; break;
+        default: break;
+    }
+    // cv::Mat and sl::Mat will share a single memory structure
+    return sl::Mat(input.size().width, input.size().height, sl_type, input.ptr(), input.size().height * input.elemSize());
+}
+*/
 
 MjSim::MjSim(const MjConfiguration & config) : impl(new MjSimImpl(config))
 {
@@ -1212,9 +1526,24 @@ bool MjSim::render()
   return impl->render();
 }
 
+void MjSim::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right)
+{
+  impl->publishCameraTopic(pub_rgb_left, pub_rgb_right);
+}
+
 mc_control::MCGlobalController * MjSim::controller() noexcept
 {
   return impl->get_controller();
+}
+
+mjModel & MjSim::model() noexcept
+{
+  return *impl->model;
+}
+
+mjData & MjSim::data() noexcept
+{
+  return *impl->data;
 }
 
 } // namespace mc_mujoco

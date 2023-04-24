@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.15)
 
 # These variables have to be defined before running setup_project
 set(PROJECT_NAME mc_mujoco)
@@ -15,6 +15,18 @@ if(NOT DEFINED MUJOCO_ROOT_DIR)
 endif()
 
 find_package(mc_rtc REQUIRED)
+
+add_library(RosDependencies INTERFACE)
+
+include(FindPkgConfig)
+
+function(AddROSDependency DEP)
+  pkg_check_modules(${DEP} REQUIRED IMPORTED_TARGET ${DEP})
+  target_link_libraries(RosDependencies INTERFACE PkgConfig::${DEP})
+endfunction()
+
+AddROSDependency(image_transport)
+AddROSDependency(cv_bridge)
 
 option(USE_GL "Use Mujoco with OpenGL" ON)
 set(MUJOCO_BIN_DIR "${MUJOCO_ROOT_DIR}/bin")
@@ -49,6 +61,26 @@ endif()
 set(OpenGL_GL_PREFERENCE "GLVND")
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
+
+# find ZED SDK
+#option(LINK_SHARED_ZED "Link with the ZED SDK shared executable" ON)
+
+#if (NOT LINK_SHARED_ZED AND MSVC)
+#  message(FATAL_ERROR "LINK_SHARED_ZED OFF : ZED SDK static libraries not available on Windows")
+#endif()
+
+#find_package(ZED 3 REQUIRED)
+#find_package(CUDA ${ZED_CUDA_VERSION} REQUIRED)
+#include_directories(${CUDA_INCLUDE_DIRS})
+#include_directories(${ZED_INCLUDE_DIRS})
+#link_directories(${ZED_LIBRARY_DIR})
+#link_directories(${CUDA_LIBRARY_DIRS})
+
+#if (LINK_SHARED_ZED)
+#  set(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
+#else()
+#  set(ZED_LIBS ${ZED_STATIC_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_LIBRARY})
+#endif()
 
 # find mujoco library
 if(USE_GL)

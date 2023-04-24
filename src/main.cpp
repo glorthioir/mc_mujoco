@@ -3,6 +3,10 @@
 #include <mc_rtc/logging.h>
 #include <mc_rtc/version.h>
 
+#include <ros/ros.h>
+#include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
+
 #include <cmath>
 #include <iostream>
 #include <thread>
@@ -11,6 +15,10 @@
 namespace po = boost::program_options;
 
 bool render_state = true;
+std::chrono::time_point<std::chrono::system_clock> timer;
+std::chrono::duration<double> elapsed_time;
+double refresheRate = 30;
+double frequency = 1.0/refresheRate;
 
 void simulate(mc_mujoco::MjSim & mj_sim)
 {
@@ -70,10 +78,24 @@ int main(int argc, char * argv[])
   }
   mc_mujoco::MjSim mj_sim(config);
 
+  ros::init(argc, argv, "mujoco_video_publisher");
+  ros::NodeHandle nh;
+  image_transport::ImageTransport it(nh);
+  image_transport::CameraPublisher pub_rgb_left = it.advertiseCamera("/HRP4CR/ZED_MINI_LEFT_1080P/image_raw", 1);
+  image_transport::CameraPublisher pub_rgb_right = it.advertiseCamera("/HRP4CR/ZED_MINI_RIGHT_1080P/image_raw", 1);
+  timer = std::chrono::system_clock::now();
+
   std::thread simThread(simulate, std::ref(mj_sim));
 
   while(render_state)
   {
+    if(ros::ok()){
+      elapsed_time = std::chrono::system_clock::now() - timer;
+      if (elapsed_time.count() > frequency){
+        mj_sim.publishCameraTopic(pub_rgb_left, pub_rgb_right);
+        timer = std::chrono::system_clock::now();
+      }
+    }
     mj_sim.updateScene();
     render_state = mj_sim.render();
   }

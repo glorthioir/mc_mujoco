@@ -4,6 +4,11 @@
 #include <mc_rtc/config.h>
 #include <mc_rtc/logging.h>
 
+#include <image_transport/camera_publisher.h>
+#include <image_transport/image_transport.h>
+
+#include "mujoco.h"
+
 #include "mj_configuration.h"
 
 namespace mc_mujoco
@@ -41,6 +46,9 @@ public:
   /*! Stop the simulation */
   void stopSimulation();
 
+  /*! Render the facial cameras and publish them to ROS */
+  void publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right);
+
   /*! Prepare to render */
   void updateScene();
 
@@ -55,6 +63,12 @@ public:
    * nullptr if with_controller was false in MjConfiguration
    */
   mc_control::MCGlobalController * controller() noexcept;
+
+  /** Return the MuJoCo model */
+  mjModel & model() noexcept;
+
+  /** Return the MuJoCo data */
+  mjData & data() noexcept;
 
 private:
   std::unique_ptr<MjSimImpl> impl;
