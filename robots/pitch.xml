@@ -1,0 +1,32 @@
+<mujoco model="pitch">
+<compiler meshdir="assets" texturedir="assets"/>
+
+<asset>
+  <texture name="pitch" type="2d" file="pitch.png"/>
+  <material name="pitch" texture="pitch" specular="1" shininess="1"/>
+  <mesh name="pitch" file="pitch.obj" scale="1 1 1"/>
+</asset>
+
+<default>
+	<default class="collision">
+		<geom condim="6" group="0" />
+	</default>
+	<default class="visual">
+		<geom condim="6" conaffinity="0" contype="0" mass="0" gap="10"/>
+	</default>
+</default>
+
+<worldbody>
+  <light mode="targetbodycom" target="base_link" directional="false" diffuse=".8 .8 .8" specular="0.3 0.3 0.3" pos="0 0 4.0" dir="0 0 -1" active="false"/>
+  <body name="base_link" pos="0 0 0">
+    <freejoint/>
+    <inertial pos="-0.00973898 0.03622926 0.12166579" mass="1.2" diaginertia="0.0253461 0.02325945 0.00873718"/>
+    <geom class="collision" name ="collision" friction="1 0.01 0.05" type="cylinder" size="0.05 0.115" pos="-0.015 0.03 0.111"/>
+    <geom class="collision" name ="collision2" type="capsule" size="0.01 0.05" pos="0.06 0.104 0.16"/>
+    <geom class="collision" name ="collision3" type="capsule" size="0.01 0.025" pos="0.04 0.085 0.22" euler="1.42 2.4 0"/>
+    <geom class="collision" name ="collision4" type="capsule" size="0.01 0.025" pos="0.04 0.085 0.09" euler="-1.1 -2.4 0"/>
+    <geom class="visual" type="mesh" material="pitch" mesh="pitch" group="1"/>
+    <geom name ="grabbingPos" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0.062 0.102 0.16" euler="3.14 0 -1.57"/>
+  </body>
+</worldbody>
+</mujoco>

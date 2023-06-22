@@ -170,14 +170,21 @@ private:
   std::chrono::time_point<std::chrono::system_clock> timer;
   std::vector<int> listOfObjectIndex;
   std::vector<int> listOfHandIndex;
+  int gazeIndex;
+  Eigen::Vector3d originGazePos;
+  Eigen::Quaternion<double> originQuat;
+  double originGazeDistance;
+  Eigen::Vector3d previousDirectionalVector;
   std::unordered_map<int, std::vector<int>> mapOfGrabbingGeomIndex;
   std::unordered_map<std::string, int> mapOfObjectsNames;
   std::unordered_map<int, std::string> mapOfGeoms;
   std::unordered_map<int, std::string> mapOfHandGeoms;
   std::unordered_map<std::string, bool> currentCollision;
-  std::unordered_map<std::string, double> currentCollisionTimer;
-  std::unordered_map<std::string, double> noContactTimer;
-  std::unordered_map<std::string, double> currentGoalTimer;
+  std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> currentCollisionTimer;
+  std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> noContactTimer;
+  std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> currentGoalTimer;
+  std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> eyesContactTimer;
+  std::unordered_map<std::string, bool> currentEyesContact;
 
 
 public:
@@ -264,7 +271,7 @@ public:
 
   void updateData();
 
-  void updateTeleopData(double deltaContact, double deltaTime, double deltaResetGoal);
+  void updateTeleopData(double deltaContact, double deltaTime, double deltaResetGoal, double deltaEyesContact);
 
   bool controlStep();
 

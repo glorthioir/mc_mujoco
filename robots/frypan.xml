@@ -1,0 +1,30 @@
+<mujoco model="frypan">
+<compiler meshdir="assets" texturedir="assets"/>
+
+<asset>
+  <texture name="frypan" file="frypan.png" type="2d"/>
+  <material name="frypan" texture="frypan" specular="1" shininess="1"/>
+  <mesh name="frypan" file="frypan.obj" scale="1 1 1"/>
+</asset>
+
+<default>
+	<default class="collision">
+		<geom condim="6" group="0" />
+	</default>
+	<default class="visual">
+		<geom condim="6" conaffinity="0" contype="0" mass="0" gap="10"/>
+	</default>
+</default>
+
+<worldbody>
+  <light pos=".4 -.4 .3" dir="-2 2 -1.5" diffuse=".6 .6 .6" active="false"/>
+  <body name="base_link" pos="0 0 0.01">
+    <freejoint/>
+    <inertial pos="-0.06544246 0.00215232 0.01742793" mass="1" diaginertia="0.0103 0.0072 0.0037"/>
+    <geom class="collision" name ="collision" friction="1 0.01 0.5" type="cylinder" size="0.09 0.012" pos="-0.08 0 0.01"/>
+    <geom class="collision" name ="collision2" type="capsule" size="0.01 0.08" pos="0.09 0.01 0.036" euler="0 1.42 0"/>
+    <geom class="visual" type="mesh" material="frypan" mesh="frypan" group="1"/>
+    <geom name ="grabbingPos" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0.09 0.01 0.05" euler="0 1.42 0"/>
+  </body>
+</worldbody>
+</mujoco>

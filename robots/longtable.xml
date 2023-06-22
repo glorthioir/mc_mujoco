@@ -3,7 +3,7 @@
     <asset>
         <texture name="texmarble" type="cube" file="marble.png"/>
         <material name="matmarble" texture="texmarble" rgba=".7 .7 .7 1"/>
-        <mesh name="longtable_mesh" file="longtable.stl" scale="1 1 0.85" />
+        <mesh name="longtable_mesh" file="longtable.stl" scale="1 1 1.1" />
         <!--base size is 0.8m-->
     </asset>
 
@@ -21,10 +21,10 @@
 	<light mode="fixed" directional="false" diffuse=".8 .8 .8" specular="0.3 0.3 0.3" pos="0 0 -4.0" dir="0 0 1" active="false"/>
         <freejoint name="root" />
         <geom class="collision" type="box" size="0.5 0.75 .02" rgba="0.266754 0.174546 0.0644028 1" />
-        <geom class="collision" type="cylinder" size="0.03 0.2" pos="0.4 -0.7 0.46"  rgba="0.266754 0.174546 0.0644028 1" />
-        <geom class="collision" type="cylinder" size="0.03 0.2" pos="-0.4 -0.7 0.46"  rgba="0.266754 0.174546 0.0644028 1" />
-        <geom class="collision" type="cylinder" size="0.03 0.2" pos="0.4 0.7 0.46"  rgba="0.266754 0.174546 0.0644028 1" />
-        <geom class="collision" type="cylinder" size="0.03 0.2" pos="-0.4 0.7 0.46"  rgba="0.266754 0.174546 0.0644028 1" />
+        <geom class="collision" type="cylinder" size="0.03 0.2" pos="0.4 -0.7 0.66"  rgba="0.266754 0.174546 0.0644028 1" />
+        <geom class="collision" type="cylinder" size="0.03 0.2" pos="-0.4 -0.7 0.66"  rgba="0.266754 0.174546 0.0644028 1" />
+        <geom class="collision" type="cylinder" size="0.03 0.2" pos="0.4 0.7 0.66"  rgba="0.266754 0.174546 0.0644028 1" />
+        <geom class="collision" type="cylinder" size="0.03 0.2" pos="-0.4 0.7 0.66"  rgba="0.266754 0.174546 0.0644028 1" />
         <geom class="visual" type="mesh" mesh="longtable_mesh" material="matmarble" />
       </body>
     </worldbody>

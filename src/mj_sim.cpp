@@ -447,6 +447,7 @@ void MjSimImpl::makeDatastoreCalls()
   // store the name, position, and orientation of the object from the simulation into the DataStore
   std::vector<std::string> goalsName;
   std::vector<bool> completedGoals;
+  std::vector<bool> isLookingAt;
   std::vector<double> targetPositions;
   std::vector<double> targetOrientations;
   std::vector<double> handsPositions;
@@ -454,6 +455,8 @@ void MjSimImpl::makeDatastoreCalls()
   std::unordered_map<int, std::vector<int>> goalPreconditions;
   listOfHandIndex.resize(0);
   int j = 0;
+
+  std::cout << std::endl;
 
   for (unsigned int i = 0; i < model->nbody; i++){
 
@@ -493,6 +496,7 @@ void MjSimImpl::makeDatastoreCalls()
       std::cout << ", position: (" << data->xpos[i*3] << ", " << data->xpos[i*3+1] << ", " << data->xpos[i*3+2] << ")";
       std::cout << " and orientation: (" << data->xquat[i*4] << ", " << data->xquat[i*4+1] << ", " << data->xquat[i*4+2] << ", " << data->xquat[i*4+3] <<")\n";
     }
+
   }
   std::cout << std::endl;
 
@@ -522,9 +526,21 @@ void MjSimImpl::makeDatastoreCalls()
       {
         geomName = geomName.substr(0, geomName.find('_'));
         mapOfGeoms[i] = geomName;
-        currentCollisionTimer[geomName] = 0.0;
-        noContactTimer[geomName] = 0.0;
+        currentCollisionTimer[geomName] = std::chrono::system_clock::now();
+        noContactTimer[geomName] = std::chrono::system_clock::now();
         currentCollision[geomName] = false;
+        eyesContactTimer[geomName] = std::chrono::system_clock::now();
+        currentEyesContact[geomName] = false;
+        continue;
+      }
+      if(geomName.find("gaze") != std::string::npos){
+        gazeIndex = i;
+        for (unsigned cpt = 0; cpt < 3; cpt++)
+          originGazePos[cpt] = model->geom_pos[i*3+cpt];
+        originQuat = {model->geom_quat[i*4], model->geom_quat[i*4+1], model->geom_quat[i*4+2], model->geom_quat[i*4+3]};
+        if (!controller->controller().datastore().has("gazeVectors"))
+          controller->controller().datastore().make_initializer<std::vector<double>>("gazeVectors", 0.0, 0.0, 0.0, 0.0, -0.3, -1.0);
+        originGazeDistance = originGazePos.norm();
         continue;
       }
       geomName = geomName.substr(0, geomName.find('_'));
@@ -538,6 +554,7 @@ void MjSimImpl::makeDatastoreCalls()
       mapOfGoalOrientations[objectIndex].push_back(geomQuat.z());
       mapOfGrabbingGeomIndex[objectIndex].push_back(i);
     }
+
   }
 
   //-------- For advanced goals (pour, cut and cook) --------
@@ -557,7 +574,7 @@ void MjSimImpl::makeDatastoreCalls()
 
   // Maybe need to design a landmark table here
 
-  currentGoalTimer = {{"pour_pitch", 0.0}, {"pour_bottle", 0.0}, {"cut_potato", 0.0}, {"cook_potato1", 0.0}, {"cook_potato2", 0.0}};
+  currentGoalTimer = {{"pour_pitch", std::chrono::system_clock::now()}, {"pour_bottle", std::chrono::system_clock::now()}, {"cut_potato", std::chrono::system_clock::now()}, {"cook_potato1", std::chrono::system_clock::now()}, {"cook_potato2", std::chrono::system_clock::now()}};
   int cupIndex = mapOfObjectsNames["cup"]*3;
   potatoIndex *= 3;
   int panIndex = mapOfObjectsNames["pan"]*3;
@@ -603,11 +620,14 @@ void MjSimImpl::makeDatastoreCalls()
   for(unsigned int j = 0; j < 4; ++j)
     targetOrientations.push_back(0.0);
 
-  for(unsigned int i = 0; i < mapOfGoalPositions.size(); ++i)
+  for(unsigned int i = 0; i < mapOfGoalPositions.size(); ++i){
     completedGoals.push_back(false);
+    isLookingAt.push_back(false);
+  }
 
   controller->controller().datastore().make<std::vector<std::string>>("goalsName", goalsName);
   controller->controller().datastore().make<std::vector<bool>>("completedGoals", completedGoals);
+  controller->controller().datastore().make<std::vector<bool>>("isLookingAt", isLookingAt);
   controller->controller().datastore().make<bool>("newGoalAchieved", false);
   controller->controller().datastore().make<std::unordered_map<int, std::vector<int>>>("goalPreconditions", goalPreconditions);
   controller->controller().datastore().make<std::vector<double>>("targetPositions", targetPositions);
@@ -732,7 +752,7 @@ void MjSimImpl::startSimulation()
   setSimulationInitialState();
 }
 
-void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double deltaResetGoal){
+void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double deltaResetGoal, double deltaEyesContact){
   auto & completedGoals = controller->controller().datastore().get<std::vector<bool>>("completedGoals");
   auto & newGoalAchieved = controller->controller().datastore().get<bool>("newGoalAchieved");
   auto & targetPositions = controller->controller().datastore().get<std::vector<double>>("targetPositions");
@@ -741,7 +761,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   auto & handsOrientations = controller->controller().datastore().get<std::vector<double>>("handsOrientations");
   auto & mapOfGoalPositions = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalPositions");
   auto & mapOfGoalOrientations = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalOrientations");
-  auto current_time = std::chrono::system_clock::now();
+  std::chrono::time_point<std::chrono::system_clock> current_time = std::chrono::system_clock::now();
 
   for (unsigned int i = 0; i < listOfObjectIndex.size(); i++)
   {
@@ -796,11 +816,11 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   int picthIndex = mapOfObjectsNames["pitch"]*3;
   int bottleIndex = mapOfObjectsNames["bottle"]*3;
   int knifeIndex = mapOfObjectsNames["knife"]*3;
-  std::chrono::duration<double> elapsed_time = std::chrono::system_clock::now() - current_time;
+  std::chrono::duration<double> elapsed_time;
 
   std::vector<double> cupPos = {targetPositions[cupIndex], targetPositions[cupIndex+1], targetPositions[cupIndex+2]};
   mapOfGoalPositions[goalIndex] = cupPos;
-  mapOfGoalPositions[goalIndex][2] += 0.15; // We want the pitch about 20 cm above the cup
+  mapOfGoalPositions[goalIndex][2] += 0.15; // We want the pitch about 15 cm above the cup
   int newGoalIndex = goalIndex*3;
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
     targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
@@ -809,17 +829,17 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   double squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[picthIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[picthIndex]) + 
                           (mapOfGoalPositions[goalIndex][1] - targetPositions[picthIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[picthIndex+1]) +
                           (mapOfGoalPositions[goalIndex][2] - targetPositions[picthIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[picthIndex+2]);
-  if(squareDistance < 100.0){
-    currentGoalTimer["pour_pitch"] += elapsed_time.count();
-    if(currentGoalTimer["pour_pitch"] > deltaTime){
+  if(squareDistance < 0.01){
+     elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["pour_pitch"];
+    if(elapsed_time.count() > deltaTime && !completedGoals[goalIndex]){
       completedGoals[goalIndex] = true;
       newGoalAchieved = true;
     }
   }
   else
-    currentGoalTimer["pour_pitch"] = 0.0;
+    currentGoalTimer["pour_pitch"] = std::chrono::system_clock::now();
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the bottle about 20 cm above the cup
+  mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1]; // We want the bottle about 15 cm above the cup
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
     targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
     newGoalIndex++;
@@ -827,15 +847,15 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[bottleIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[bottleIndex]) + 
                           (mapOfGoalPositions[goalIndex][1] - targetPositions[bottleIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[bottleIndex+1]) +
                           (mapOfGoalPositions[goalIndex][2] - targetPositions[bottleIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[bottleIndex+2]);
-  if(squareDistance < 200.0){
-    currentGoalTimer["pour_bottle"] += elapsed_time.count();
-    if(currentGoalTimer["pour_bottle"] > deltaTime){
+  if(squareDistance < 0.01){
+    elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["pour_bottle"];
+    if(elapsed_time.count() > deltaTime && !completedGoals[goalIndex]){
       completedGoals[goalIndex] = true;
       newGoalAchieved = true;
     }
   }
   else
-    currentGoalTimer["pour_bottle"] = 0.0;                         
+    currentGoalTimer["pour_bottle"] = std::chrono::system_clock::now();                         
   goalIndex++;
   mapOfGoalPositions[goalIndex] = {targetPositions[potatoIndex], targetPositions[potatoIndex+1], targetPositions[potatoIndex+2]+0.10}; // Knife on the top of the potato
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
@@ -845,15 +865,15 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[knifeIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[knifeIndex]) + 
                           (mapOfGoalPositions[goalIndex][1] - targetPositions[knifeIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[knifeIndex+1]) +
                           (mapOfGoalPositions[goalIndex][2] - targetPositions[knifeIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[knifeIndex+2]);
-  if(squareDistance < 200.0){
-    currentGoalTimer["cut_potato"] += elapsed_time.count();
-    if(currentGoalTimer["cut_potato"] > deltaTime){
+  if(squareDistance < 0.01){
+    elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["cut_potato"];
+    if(elapsed_time.count() > deltaTime && !completedGoals[goalIndex]){
       completedGoals[goalIndex] = true;
       newGoalAchieved = true;
     }
   }
   else
-    currentGoalTimer["cut_potato"] = 0.0; 
+    currentGoalTimer["cut_potato"] = std::chrono::system_clock::now(); 
   goalIndex++;
   mapOfGoalPositions[goalIndex] = {targetPositions[panIndex], targetPositions[panIndex+1], targetPositions[panIndex+2]+0.08}; // Potato in the frypan
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
@@ -863,15 +883,15 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex]) + 
                           (mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1]) +
                           (mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex+2]);                         
-  if(squareDistance < 36.0 && targetPositions[potatoIndex+2] > targetPositions[panIndex+2]){
-    currentGoalTimer["cook_potato1"] += elapsed_time.count();
-    if(currentGoalTimer["cook_potato1"] > deltaTime){
+  if(squareDistance < 0.0036 && targetPositions[potatoIndex+2] > targetPositions[panIndex+2]){
+    elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["cook_potato1"];
+    if(elapsed_time.count() > deltaTime && !completedGoals[goalIndex]){
       completedGoals[goalIndex] = true;
       newGoalAchieved = true;
     }
   }
   else
-    currentGoalTimer["cook_potato1"] = 0.0; 
+    currentGoalTimer["cook_potato1"] = std::chrono::system_clock::now(); 
   goalIndex++;
   mapOfGoalPositions[goalIndex] = mapOfGoalPositions[goalIndex-1];
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
@@ -881,18 +901,24 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex2])*(mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex2]) + 
                           (mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex2+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1]) +
                           (mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex2+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex2+2]);
-  if(squareDistance < 36.0 && targetPositions[potatoIndex2+2] > targetPositions[panIndex+2]){
-    currentGoalTimer["cook_potato2"] += elapsed_time.count();
-    if(currentGoalTimer["cook_potato2"] > deltaTime){
+  if(squareDistance < 0.0036 && targetPositions[potatoIndex2+2] > targetPositions[panIndex+2]){
+    elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["cook_potato2"];
+    if(elapsed_time.count() > deltaTime && !completedGoals[goalIndex]){
       completedGoals[goalIndex] = true;
       newGoalAchieved = true;
     }
   }
   else
-    currentGoalTimer["cook_potato2"] = 0.0;                           
+    currentGoalTimer["cook_potato2"] = std::chrono::system_clock::now();  
+
+  for(auto i = currentCollision.begin(); i != currentCollision.end(); i++)
+    i->second = false;
+  for(auto i = currentEyesContact.begin(); i != currentEyesContact.end(); i++)
+    i->second = false;
 
   for(unsigned int i = 0; i < data->ncon; i++)
   {
+
     int firstGeomID = data->contact[i].geom1;
     int secondGeomID = data->contact[i].geom2;
     if(mapOfHandGeoms.find(firstGeomID) != mapOfHandGeoms.end())
@@ -901,9 +927,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       {
         std::string secondGeom = mapOfGeoms[secondGeomID];
         currentCollision[secondGeom] = true;
-        elapsed_time = std::chrono::system_clock::now() - current_time;
-        currentCollisionTimer[secondGeom] += elapsed_time.count();
-        noContactTimer[secondGeom] = 0.0;
+        noContactTimer[secondGeom] = std::chrono::system_clock::now();
       }
     }
     else if(mapOfHandGeoms.find(secondGeomID) != mapOfHandGeoms.end())
@@ -912,39 +936,81 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       {
         std::string firstGeom = mapOfGeoms[firstGeomID];
         currentCollision[firstGeom] = true;
-        elapsed_time = std::chrono::system_clock::now() - current_time;
-        currentCollisionTimer[firstGeom] += elapsed_time.count();
-        noContactTimer[firstGeom] = 0.0;
+        noContactTimer[firstGeom] = std::chrono::system_clock::now();
       }
     }
+
+    if(firstGeomID == gazeIndex)
+    {
+      if(mapOfGeoms.find(secondGeomID) != mapOfGeoms.end())
+      {
+        std::string secondGeom = mapOfGeoms[secondGeomID];
+        currentEyesContact[secondGeom] = true;
+      }
+    }
+    else if(secondGeomID == gazeIndex)
+    {
+      if(mapOfGeoms.find(firstGeomID) != mapOfGeoms.end())
+      {
+        std::string firstGeom = mapOfGeoms[firstGeomID];
+        currentEyesContact[firstGeom] = true;
+      }
+    }
+
   }
 
+  elapsed_time = std::chrono::system_clock::now() - current_time;
   for(auto i = currentCollision.begin(); i != currentCollision.end(); i++)
   {
+    elapsed_time = std::chrono::system_clock::now() - currentCollisionTimer[i->first];
     if(!i->second)
     {
-      currentCollisionTimer[i->first] = 0.0;
+      currentCollisionTimer[i->first] = std::chrono::system_clock::now();
       
       if(completedGoals[mapOfObjectsNames[i->first]] == true)
       {
-        if(noContactTimer[i->first] < deltaResetGoal)
-        {
-          elapsed_time = std::chrono::system_clock::now() - current_time;
-          noContactTimer[i->first] += elapsed_time.count();
-        }
-        else
+        if((std::chrono::system_clock::now() - noContactTimer[i->first]).count() >= deltaResetGoal)
         {
           completedGoals[mapOfObjectsNames[i->first]] = false;
-          noContactTimer[i->first] = 0.0;
+          newGoalAchieved = true;
+          noContactTimer[i->first] = std::chrono::system_clock::now();
         }
       }
 
     }
-    else if(currentCollisionTimer[i->first] > deltaContact)
+    else if(elapsed_time.count() > deltaContact)
     {
       completedGoals[mapOfObjectsNames[i->first]] = true;
       newGoalAchieved = true;
     }
+  }
+ 
+  auto & isLookingAt = controller->controller().datastore().get<std::vector<bool>>("isLookingAt");
+  for(auto i = currentEyesContact.begin(); i != currentEyesContact.end(); i++)
+  {
+    elapsed_time = std::chrono::system_clock::now() - eyesContactTimer[i->first];
+    if(!i->second)
+      eyesContactTimer[i->first] = std::chrono::system_clock::now();
+    else if(elapsed_time.count() < deltaEyesContact)
+        i->second = false;
+    isLookingAt[mapOfObjectsNames[i->first]] = i->second;
+  }
+
+  auto & gazeVectors = controller->controller().datastore().get<std::vector<double>>("gazeVectors");
+  Eigen::Vector3d directionalVector = {gazeVectors[3] - gazeVectors[0], gazeVectors[4] - gazeVectors[1], gazeVectors[5] - gazeVectors[2]};
+  if(!previousDirectionalVector.isApprox(directionalVector))
+  {
+    previousDirectionalVector = directionalVector;  
+    double newGazeDistance = std::sqrt((gazeVectors[3] - gazeVectors[0])*(gazeVectors[3] - gazeVectors[0]) + (gazeVectors[4] - gazeVectors[1])*(gazeVectors[4] - gazeVectors[1]) + (gazeVectors[5] - gazeVectors[2])*(gazeVectors[5] - gazeVectors[2]));
+    for(unsigned int i = 0; i < 3; i++)
+      model->geom_pos[gazeIndex*3+i] = (originGazeDistance/newGazeDistance) * directionalVector[i] + gazeVectors[i];
+    Eigen::Quaternion<double> newQuat = Eigen::Quaternion<double>::FromTwoVectors(originGazePos, directionalVector) * originQuat;
+
+    model->geom_quat[gazeIndex*4] = newQuat.w();
+    model->geom_quat[gazeIndex*4+1] = newQuat.x();
+    model->geom_quat[gazeIndex*4+2] = newQuat.y();
+    model->geom_quat[gazeIndex*4+3] = newQuat.z();
+
   }
 
 }
@@ -1035,11 +1101,10 @@ void MjSimImpl::updateData()
   {
     r.updateSensors(controller.get(), model, data);
   }
-  auto current_time = std::chrono::system_clock::now();
-  std::chrono::duration<double> elapsed_time = current_time - timer;
-  if (elapsed_time.count() > 0.250)
+  std::chrono::duration<double> elapsed_time = std::chrono::system_clock::now() - timer;
+  if (elapsed_time.count() > 0.50)
   {
-    updateTeleopData(3.0, 2.0, 2.0);
+    updateTeleopData(3.0, 2.0, 2.0, 1.0);
     timer = std::chrono::system_clock::now();
   }
 }
@@ -1264,7 +1329,7 @@ bool MjSimImpl::render()
   {
     client->update();
     client->draw2D(window);
-    client->draw3D();
+    //client->draw3D();
   }
   {
     auto right_margin = 5.0f;

@@ -1,0 +1,32 @@
+<mujoco model="bottle">
+	<compiler meshdir="assets" texturedir="assets" />
+    <asset>
+        <mesh name="bottle_mesh" file="bottle.stl" scale=".6 .6 .8" />
+	<texture name="texgeom" type="cube" builtin="gradient" width="128" height="128"
+		 rgb1="1 0.1 0.3" rgb2="1 0.7 0.7"/>
+	<material name='object' texture="texgeom" texuniform="true"/>
+    </asset>
+
+    <default>
+        <default class="collision">
+            <geom condim="6" group="0" />
+        </default>
+        <default class="visual">
+        	<geom condim="6" conaffinity="0" contype="0" mass="0" gap="10"/>
+        </default>
+    </default>
+
+    <worldbody>
+      <light mode="targetbodycom" target="base_link" directional="false" diffuse=".8 .8 .8" specular="0.3 0.3 0.3" pos="0 0 4.0" dir="0 0 -1" active="false"/>
+      <body name="base_link">
+        <freejoint name="root" />
+        <inertial pos="-0.00000000000562 -0.00000000149 0.07402" mass="0.5" diaginertia="0.00075849 0.00075813 0.00012044"/>
+        <geom class="collision" name ="collision" friction="1 0.001 0.005" type="mesh" mesh="bottle_mesh" rgba="0.266754 0.174546 0.0644028 1" />
+        <geom class="visual" group="1" type="mesh" mesh="bottle_mesh" material="object" />
+        <geom name ="grabbingPos1" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0.024 0 0.065"/>
+        <geom name ="grabbingPos2" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="-0.024 0 0.065"/>
+        <geom name ="grabbingPos3" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 0.024 0.065"/>
+        <geom name ="grabbingPos4" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 -0.024 0.065"/>
+      </body>
+    </worldbody>
+</mujoco>
