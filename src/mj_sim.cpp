@@ -448,6 +448,7 @@ void MjSimImpl::makeDatastoreCalls()
   std::vector<std::string> goalsName;
   std::vector<bool> completedGoals;
   std::vector<bool> isLookingAt;
+  std::vector<bool> insideFov;
   std::vector<double> targetPositions;
   std::vector<double> targetOrientations;
   std::vector<double> handsPositions;
@@ -533,7 +534,8 @@ void MjSimImpl::makeDatastoreCalls()
         currentEyesContact[geomName] = false;
         continue;
       }
-      if(geomName.find("gaze") != std::string::npos){
+      if(geomName.find("gaze") != std::string::npos)
+      {
         gazeIndex = i;
         for (unsigned cpt = 0; cpt < 3; cpt++)
           originGazePos[cpt] = model->geom_pos[i*3+cpt];
@@ -541,6 +543,11 @@ void MjSimImpl::makeDatastoreCalls()
         if (!controller->controller().datastore().has("gazeVectors"))
           controller->controller().datastore().make_initializer<std::vector<double>>("gazeVectors", 0.0, 0.0, 0.0, 0.0, -0.3, -1.0);
         originGazeDistance = originGazePos.norm();
+        continue;
+      }
+      if(geomName.find("fov_cone") != std::string::npos)
+      {
+        fovIndex = i;
         continue;
       }
       geomName = geomName.substr(0, geomName.find('_'));
@@ -623,11 +630,13 @@ void MjSimImpl::makeDatastoreCalls()
   for(unsigned int i = 0; i < mapOfGoalPositions.size(); ++i){
     completedGoals.push_back(false);
     isLookingAt.push_back(false);
+    insideFov.push_back(false);
   }
 
   controller->controller().datastore().make<std::vector<std::string>>("goalsName", goalsName);
   controller->controller().datastore().make<std::vector<bool>>("completedGoals", completedGoals);
   controller->controller().datastore().make<std::vector<bool>>("isLookingAt", isLookingAt);
+  controller->controller().datastore().make<std::vector<bool>>("insideFov", insideFov);
   controller->controller().datastore().make<bool>("newGoalAchieved", false);
   controller->controller().datastore().make<std::unordered_map<int, std::vector<int>>>("goalPreconditions", goalPreconditions);
   controller->controller().datastore().make<std::vector<double>>("targetPositions", targetPositions);
@@ -916,6 +925,10 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   for(auto i = currentEyesContact.begin(); i != currentEyesContact.end(); i++)
     i->second = false;
 
+  auto & insideFov = controller->controller().datastore().get<std::vector<bool>>("insideFov");
+  for(unsigned int i = 0; i < insideFov.size(); i++)
+    insideFov[i] = false;
+
   for(unsigned int i = 0; i < data->ncon; i++)
   {
 
@@ -928,6 +941,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
         std::string secondGeom = mapOfGeoms[secondGeomID];
         currentCollision[secondGeom] = true;
         noContactTimer[secondGeom] = std::chrono::system_clock::now();
+        continue;
       }
     }
     else if(mapOfHandGeoms.find(secondGeomID) != mapOfHandGeoms.end())
@@ -937,6 +951,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
         std::string firstGeom = mapOfGeoms[firstGeomID];
         currentCollision[firstGeom] = true;
         noContactTimer[firstGeom] = std::chrono::system_clock::now();
+        continue;
       }
     }
 
@@ -946,6 +961,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       {
         std::string secondGeom = mapOfGeoms[secondGeomID];
         currentEyesContact[secondGeom] = true;
+        continue;
       }
     }
     else if(secondGeomID == gazeIndex)
@@ -954,6 +970,26 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       {
         std::string firstGeom = mapOfGeoms[firstGeomID];
         currentEyesContact[firstGeom] = true;
+        continue;
+      }
+    }
+
+    if(firstGeomID == fovIndex)
+    {
+      if(mapOfGeoms.find(secondGeomID) != mapOfGeoms.end())
+      {
+        std::string secondGeom = mapOfGeoms[secondGeomID];
+        insideFov[mapOfObjectsNames[secondGeom]] = true;
+        continue;
+      }
+    }
+    else if(secondGeomID == fovIndex)
+    {
+      if(mapOfGeoms.find(firstGeomID) != mapOfGeoms.end())
+      {
+        std::string firstGeom = mapOfGeoms[firstGeomID];
+        insideFov[mapOfObjectsNames[firstGeom]] = true;
+        continue;
       }
     }
 
@@ -1329,7 +1365,7 @@ bool MjSimImpl::render()
   {
     client->update();
     client->draw2D(window);
-    //client->draw3D();
+    client->draw3D();
   }
   {
     auto right_margin = 5.0f;
