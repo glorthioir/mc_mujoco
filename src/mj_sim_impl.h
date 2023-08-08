@@ -171,6 +171,7 @@ private:
   std::vector<int> listOfObjectIndex;
   std::vector<int> listOfHandIndex;
   int gazeIndex;
+  int fovIndex;
   Eigen::Vector3d originGazePos;
   Eigen::Quaternion<double> originQuat;
   double originGazeDistance;
