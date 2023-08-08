@@ -24,6 +24,14 @@ namespace bfs = boost::filesystem;
 
 #include <mc_rtc/version.h>
 
+#ifdef USE_UI_ADAPTER
+#  include "our_glfw_adapter.h"
+#endif
+
+#ifdef USE_UI_ADAPTER
+#  include "our_glfw_adapter.h"
+#endif
+
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
 #include <cv_bridge/cv_bridge.h>
@@ -112,14 +120,20 @@ bool MjRobot::loadGain(const std::string & path_to_pd, const std::vector<std::st
 MjSimImpl::MjSimImpl(const MjConfiguration & config)
 : controller(std::make_unique<mc_control::MCGlobalController>(config.mc_config)), config(config)
 {
+  auto get_robot_cfg_path_local = [&](const std::string & robot_name) {
+    return bfs::path(mc_mujoco::USER_FOLDER) / (robot_name + ".yaml");
+  };
+  auto get_robot_cfg_path_global = [&](const std::string & robot_name) {
+    return bfs::path(mc_mujoco::SHARE_FOLDER) / (robot_name + ".yaml");
+  };
   auto get_robot_cfg_path = [&](const std::string & robot_name) -> std::string {
-    if(bfs::exists(bfs::path(mc_mujoco::USER_FOLDER) / (robot_name + ".yaml")))
+    if(bfs::exists(get_robot_cfg_path_local(robot_name)))
     {
-      return (bfs::path(mc_mujoco::USER_FOLDER) / (robot_name + ".yaml")).string();
+      return get_robot_cfg_path_local(robot_name).string();
     }
-    else if(bfs::exists(bfs::path(mc_mujoco::SHARE_FOLDER) / (robot_name + ".yaml")))
+    else if(bfs::exists(get_robot_cfg_path_global(robot_name)))
     {
-      return (bfs::path(mc_mujoco::SHARE_FOLDER) / (robot_name + ".yaml")).string();
+      return get_robot_cfg_path_global(robot_name).string();
     }
     else
     {
@@ -148,15 +162,16 @@ MjSimImpl::MjSimImpl(const MjConfiguration & config)
   {
     MjObject object;
     object.name = static_cast<std::string>(co.first);
-    object.init_pose = static_cast<sva::PTransformd>(co.second("init_pos"));
+    object.init_pose = static_cast<sva::PTransformd>(co.second("init_pos", sva::PTransformd::Identity()));
     objects.push_back(object);
 
     std::string module = co.second("module");
-    auto object_cfg_path = (bfs::path(mc_mujoco::SHARE_FOLDER) / (module + ".yaml")).string();
-    if(!bfs::exists(object_cfg_path))
+    auto object_cfg_path = get_robot_cfg_path(module);
+    if(object_cfg_path.empty())
     {
-      mc_rtc::log::error_and_throw<std::runtime_error>("[mc_mujoco] config cannot be found at {} for {} object",
-                                                       object_cfg_path, co.first);
+      mc_rtc::log::error_and_throw<std::runtime_error>(
+          "[mc_mujoco] Module ({}) cannot be found at for object {}.\nTried:\n- {}\n- {}", module, co.first,
+          get_robot_cfg_path_local(module).string(), get_robot_cfg_path_global(module).string());
     }
     auto object_cfg = mc_rtc::Configuration(object_cfg_path);
     if(!object_cfg.has("xmlModelPath"))
@@ -236,6 +251,20 @@ void MjSimImpl::cleanup()
   mujoco_cleanup(this);
 }
 
+void MjObject::initialize(mjModel * model)
+{
+  if(root_body.size())
+  {
+    root_body_id = mj_name2id(model, mjOBJ_BODY, root_body.c_str());
+  }
+  if(root_joint.size())
+  {
+    auto root_joint_id = mj_name2id(model, mjOBJ_JOINT, root_joint.c_str());
+    root_qpos_idx = model->jnt_qposadr[root_joint_id];
+    root_qvel_idx = model->jnt_dofadr[root_joint_id];
+  }
+}
+
 void MjRobot::initialize(mjModel * model, const mc_rbdyn::Robot & robot)
 {
   mj_jnt_ids.resize(0);
@@ -263,6 +292,12 @@ void MjRobot::initialize(mjModel * model, const mc_rbdyn::Robot & robot)
   if(root_body.size())
   {
     root_body_id = mj_name2id(model, mjOBJ_BODY, root_body.c_str());
+  }
+  if(root_joint.size())
+  {
+    auto root_joint_id = mj_name2id(model, mjOBJ_JOINT, root_joint.c_str());
+    root_qpos_idx = model->jnt_qposadr[root_joint_id];
+    root_qvel_idx = model->jnt_dofadr[root_joint_id];
   }
   auto init_sensor_id = [&](const char * mj_name, const char * mc_name, const std::string & sensor_name,
                             const char * suffix, mjtSensor type, std::unordered_map<std::string, int> & mapping) {
@@ -369,50 +404,56 @@ void MjSimImpl::setSimulationInitialState()
 {
   if(controller)
   {
-    qInit.resize(0);
-    alphaInit.resize(0);
-
     for(auto & o : objects)
     {
-      sva::PTransformd pose = o.init_pose;
-      const auto & t = pose.translation();
-      for(size_t i = 0; i < 3; ++i)
+      o.initialize(model);
+      if(o.root_qpos_idx != -1 && o.root_joint_type == mjJNT_FREE)
       {
-        qInit.push_back(t[i]);
-        alphaInit.push_back(0);
-        alphaInit.push_back(0);
+        const auto & t = o.init_pose.translation();
+        data->qpos[o.root_qpos_idx + 0] = t.x();
+        data->qpos[o.root_qpos_idx + 1] = t.y();
+        data->qpos[o.root_qpos_idx + 2] = t.z();
+        Eigen::Quaterniond q = Eigen::Quaterniond(o.init_pose.rotation()).inverse();
+        data->qpos[o.root_qpos_idx + 3] = q.w();
+        data->qpos[o.root_qpos_idx + 4] = q.x();
+        data->qpos[o.root_qpos_idx + 5] = q.y();
+        data->qpos[o.root_qpos_idx + 6] = q.z();
+        // push linear/angular velocities
+        mju_zero3(&data->qvel[o.root_qvel_idx]);
+        mju_zero3(&data->qvel[o.root_qvel_idx + 3]);
       }
-      Eigen::Quaterniond q = Eigen::Quaterniond(pose.rotation()).inverse();
-      qInit.push_back(q.w());
-      qInit.push_back(q.x());
-      qInit.push_back(q.y());
-      qInit.push_back(q.z());
+      else if(o.root_body_id != -1)
+      {
+        const auto & t = o.init_pose.translation();
+        model->body_pos[3 * o.root_body_id + 0] = t.x();
+        model->body_pos[3 * o.root_body_id + 1] = t.y();
+        model->body_pos[3 * o.root_body_id + 2] = t.z();
+        Eigen::Quaterniond q = Eigen::Quaterniond(o.init_pose.rotation()).inverse();
+        model->body_quat[4 * o.root_body_id + 0] = q.w();
+        model->body_quat[4 * o.root_body_id + 1] = q.x();
+        model->body_quat[4 * o.root_body_id + 2] = q.y();
+        model->body_quat[4 * o.root_body_id + 3] = q.z();
+      }
     }
 
     for(auto & r : robots)
     {
       const auto & robot = controller->robots().robot(r.name);
       r.initialize(model, robot);
-      if(r.root_joint.size())
+      if(r.root_qpos_idx != -1)
       {
-        r.root_qpos_idx = qInit.size();
-        r.root_qvel_idx = alphaInit.size();
-        if(robot.mb().joint(0).dof() == 6)
-        {
-          const auto & t = robot.posW().translation();
-          for(size_t i = 0; i < 3; ++i)
-          {
-            qInit.push_back(t[i]);
-            // push linear/angular velocities
-            alphaInit.push_back(0);
-            alphaInit.push_back(0);
-          }
-          Eigen::Quaterniond q = Eigen::Quaterniond(robot.posW().rotation()).inverse();
-          qInit.push_back(q.w());
-          qInit.push_back(q.x());
-          qInit.push_back(q.y());
-          qInit.push_back(q.z());
-        }
+        const auto & t = robot.posW().translation();
+        data->qpos[r.root_qpos_idx + 0] = t.x();
+        data->qpos[r.root_qpos_idx + 1] = t.y();
+        data->qpos[r.root_qpos_idx + 2] = t.z();
+        Eigen::Quaterniond q = Eigen::Quaterniond(robot.posW().rotation()).inverse();
+        data->qpos[r.root_qpos_idx + 3] = q.w();
+        data->qpos[r.root_qpos_idx + 4] = q.x();
+        data->qpos[r.root_qpos_idx + 5] = q.y();
+        data->qpos[r.root_qpos_idx + 6] = q.z();
+        // push linear/angular velocities
+        mju_zero3(&data->qvel[r.root_qvel_idx]);
+        mju_zero3(&data->qvel[r.root_qvel_idx + 3]);
       }
       else if(r.root_body_id != -1)
       {
@@ -426,18 +467,18 @@ void MjSimImpl::setSimulationInitialState()
         model->body_quat[4 * r.root_body_id + 2] = q.y();
         model->body_quat[4 * r.root_body_id + 3] = q.z();
       }
-      for(size_t i = 0; i < r.mj_jnt_names.size(); ++i)
+      for(size_t i = 0; i < r.mj_jnt_ids.size(); ++i)
       {
-        qInit.push_back(r.encoders[r.mj_jnt_to_rjo[i]]);
-        alphaInit.push_back(r.alphas[r.mj_jnt_to_rjo[i]]);
+        if(r.mj_jnt_to_rjo[i] == -1)
+        {
+          continue;
+        }
+        data->qpos[model->jnt_qposadr[r.mj_jnt_ids[i]]] = r.encoders[r.mj_jnt_to_rjo[i]];
+        data->qvel[model->jnt_dofadr[r.mj_jnt_ids[i]]] = r.alphas[r.mj_jnt_to_rjo[i]];
       }
     }
   }
-  // set initial qpos, qvel in mujoco
-  if(!mujoco_set_const(model, data, qInit, alphaInit))
-  {
-    mc_rtc::log::error_and_throw<std::runtime_error>("[mc_mujoco] Set inital state failed.");
-  }
+
   mj_forward(model, data);
 }
 
@@ -1351,7 +1392,11 @@ bool MjSimImpl::render()
   }
 
   // mj render
+#ifdef USE_UI_ADAPTER
+  mjr_render(platform_ui_adapter->state().rect[0], &scene, &platform_ui_adapter->mjr_context());
+#else
   mjr_render(uistate.rect[0], &scene, &context);
+#endif
 
   // Render ImGui
   ImGui_ImplOpenGL3_NewFrame();
@@ -1364,7 +1409,11 @@ bool MjSimImpl::render()
   if(client)
   {
     client->update();
+#ifdef USE_UI_ADAPTER
+    client->draw2D(*platform_ui_adapter);
+#else
     client->draw2D(window);
+#endif
     client->draw3D();
   }
   {
@@ -1452,9 +1501,93 @@ bool MjSimImpl::render()
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
   // swap OpenGL buffers (blocking call due to v-sync)
+#ifdef USE_UI_ADAPTER
+  platform_ui_adapter->SwapBuffers();
+#else
   glfwSwapBuffers(window);
+#endif
 
+#ifdef USE_UI_ADAPTER
+  return !platform_ui_adapter->ShouldCloseWindow();
+#else
   return !glfwWindowShouldClose(window);
+#endif
+}
+
+void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right)
+{
+  int initialCameraType = camera.type;
+  int initialCamera = camera.fixedcamid;
+
+  camera.fixedcamid = 0;
+  camera.type = mjCAMERA_FIXED;
+  mjrRect_& rect_window = uistate.rect[0];
+  int height = rect_window.height;
+  int width = rect_window.width;
+  
+  unsigned char* rgbL = (unsigned char*)std::malloc(3*height*width);
+  float* depthL = (float*)std::malloc(sizeof(float)*height*width);
+  mjv_updateScene(model, data, &options, &pert, &camera, mjCAT_ALL, &scene);
+  mjr_render(rect_window, &scene, &context);
+  mjr_readPixels(rgbL, depthL, rect_window, &context);
+  
+  camera.fixedcamid = 1;
+  unsigned char* rgbR = (unsigned char*)std::malloc(3*height*width);
+  float* depthR = (float*)std::malloc(sizeof(float)*height*width);
+  mjv_updateScene(model, data, &options, &pert, &camera, mjCAT_ALL, &scene);
+  mjr_render(rect_window, &scene, &context);
+  mjr_readPixels(rgbR, depthR, rect_window, &context);
+
+  // Create CV images from data
+  cv::Mat rgb_image_left_flip(height, width, CV_8UC3, rgbL);
+  cv::Mat rgb_image_right_flip(height, width, CV_8UC3, rgbR);
+  //cv::Mat depth_image_left(height, width, CV_32FC1, depthL);
+  //cv::Mat depth_image_right(height, width, CV_32FC1, depthR);
+
+  // Need to flip the char* because of Mujoco reading the wrong way
+  cv::Mat rgb_image_left;
+  cv::Mat rgb_image_right;
+  cv::flip(rgb_image_left_flip, rgb_image_left, 0);
+  cv::flip(rgb_image_right_flip, rgb_image_right, 0);
+
+  // Convert CV images to ROS messages
+  sensor_msgs::ImagePtr rgb_msg_left = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_left).toImageMsg();
+  sensor_msgs::ImagePtr rgb_msg_right = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_right).toImageMsg();
+  //sensor_msgs::ImagePtr depth_msg_left = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_left).toImageMsg();
+  //sensor_msgs::ImagePtr depth_msg_right = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_right).toImageMsg();
+  
+  // Set ROS message header information
+  rgb_msg_left->header.stamp = ros::Time::now();
+  rgb_msg_right->header.stamp = ros::Time::now();
+  rgb_msg_left->header.frame_id = "camera_rgb_left";
+  rgb_msg_right->header.frame_id = "camera_rgb_right";
+  /*
+  depth_msg_left->header.stamp = ros::Time::now();
+  depth_msg_right->header.stamp = ros::Time::now();
+  depth_msg_left->header.frame_id = "camera_depth_left";
+  depth_msg_right->header.frame_id = "camera_depth_right";
+  */
+
+  // Publish RGB and depth messages using CameraPublisher
+  sensor_msgs::CameraInfoPtr camera_info_left(new sensor_msgs::CameraInfo());
+  camera_info_left->header.stamp = ros::Time::now();
+  camera_info_left->header.frame_id = "camera_rgb_left";
+  pub_rgb_left.publish(rgb_msg_left, camera_info_left);
+
+  sensor_msgs::CameraInfoPtr camera_info_right(new sensor_msgs::CameraInfo());
+  camera_info_right->header.stamp = ros::Time::now();
+  camera_info_right->header.frame_id = "camera_rgb_right";
+  pub_rgb_right.publish(rgb_msg_right, camera_info_right);
+
+  camera.fixedcamid = initialCamera;
+  camera.type = initialCameraType;
+
+  // Free malloc allocation
+  free(rgbL);
+  free(depthL);
+  free(rgbR);
+  free(depthR);
+
 }
 
 void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right)

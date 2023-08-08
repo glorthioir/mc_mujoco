@@ -6,6 +6,10 @@
 
 #include "mujoco.h"
 
+#ifdef USE_UI_ADAPTER
+#  include "platform_ui_adapter.h"
+#endif
+
 #include <condition_variable>
 //#include <sl/Camera.hpp>
 #include <opencv2/opencv.hpp>
@@ -27,6 +31,25 @@ struct MjObject
   std::string name;
   /** Initial pose in world frame */
   sva::PTransformd init_pose;
+  /** Root body name in MuJoCo */
+  std::string root_body;
+  /** Root body id */
+  int root_body_id = -1;
+  /** Free joint in MuJoCo */
+  std::string root_joint;
+  /** Root joint type */
+  mjtJoint root_joint_type = mjJNT_FREE;
+  /** Index of robot's root in qpos, -1 if nq == 0 */
+  int root_qpos_idx = -1;
+  /** Index of robot's root in qvel, -1 if ndof == 0 */
+  int root_qvel_idx = -1;
+  /** Number of generalized coordinates */
+  int nq = -1;
+  /** Number of dof */
+  int ndof = -1;
+
+  /** Initialize some data after the simulation has started */
+  void initialize(mjModel * model);
 };
 
 /** Interface between a Mujoco robot and an mc_rtc robot */
@@ -201,14 +224,19 @@ public:
   /** MuJoCo data */
   mjData * data = nullptr;
 
-  /** Initial state */
-  std::vector<double> qInit;
-
-  /** Initial velocity */
-  std::vector<double> alphaInit;
-
+#ifndef USE_UI_ADAPTER
   /** GLFW window, might be null if the visualization is disabled */
   GLFWwindow * window = nullptr;
+
+  /** GPU context */
+  mjrContext context;
+
+  /** Keyboard and mouse states */
+  mjuiState uistate;
+#else
+  /** Platform UI adapter */
+  std::unique_ptr<mujoco::PlatformUIAdapter> platform_ui_adapter;
+#endif
 
   /** Camera */
   mjvCamera camera;
@@ -221,12 +249,6 @@ public:
 
   /** Mouse perturbations */
   mjvPerturb pert;
-
-  /** GPU context */
-  mjrContext context;
-
-  /** Keyboard and mouse states */
-  mjuiState uistate;
 
   /** Start of the previous iteration */
   clock::time_point mj_sim_start_t;

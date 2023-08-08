@@ -1,3 +1,9 @@
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#  define IMGUI_DEFINE_MATH_OPERATORS
+#endif
+#include "imgui.h"
+#include "imgui_internal.h" // for ImVec2 operations
+
 #include "widgets/Arrow.h"
 #include "widgets/Force.h"
 #include "widgets/Point3D.h"
@@ -7,13 +13,6 @@
 #include "widgets/Transform.h"
 #include "widgets/Visual.h"
 #include "widgets/XYTheta.h"
-
-#include "imgui.h"
-
-#ifndef IMGUI_DEFINE_MATH_OPERATORS
-#  define IMGUI_DEFINE_MATH_OPERATORS
-#endif
-#include "imgui_internal.h" // for ImVec2 operations
 
 namespace mc_mujoco
 {
@@ -65,7 +64,11 @@ inline ImVec2 to_screen(const Eigen::Vector3d & point,
 
 } // namespace internal
 
+#ifdef USE_UI_ADAPTER
+void MujocoClient::draw2D(mujoco::PlatformUIAdapter & window)
+#else
 void MujocoClient::draw2D(GLFWwindow * window)
+#endif
 {
   glGetFloatv(GL_MODELVIEW_MATRIX, view_.data());
   glGetFloatv(GL_PROJECTION_MATRIX, projection_.data());
@@ -75,7 +78,11 @@ void MujocoClient::draw2D(GLFWwindow * window)
 
   int width;
   int height;
+#ifdef USE_UI_ADAPTER
+  std::tie(width, height) = window.GetWindowSize();
+#else
   glfwGetWindowSize(window, &width, &height);
+#endif
   width_ = static_cast<float>(width);
   height_ = static_cast<float>(height);
 

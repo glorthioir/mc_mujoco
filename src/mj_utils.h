@@ -18,14 +18,19 @@ namespace mc_mujoco
  * Warnings are displayed when some global parameters conflict, in such cases, the value from the first model where the
  * parameter appeared will prevail
  *
- * \param robots Prefix applied to each model
+ * \param mujocoObjects Objects added to the simulation but not in mc_rtc
  *
- * \param xmlFiles Individual models
+ * \param mcrtcObjects Objects added to the simulation and to mc_rtc
+ *
+ * \param mjObjects MuJoCo ids for objects not in mc_rtc will be filled with parameters in the merged model
+ *
+ * \param mjRobots MuJoCo ids for objects in mc_rtc will be filled with parameters in the merged model
  *
  * \returns The path to the generated model
  */
 std::string merge_mujoco_models(const std::map<std::string, std::string> & mujocoObjects,
                                 const std::map<std::string, std::string> & mcrtcObjects,
+                                std::vector<MjObject> & mjObjects,
                                 std::vector<MjRobot> & mjRobots);
 
 /*! Load XML model and initialize */
@@ -35,9 +40,6 @@ bool mujoco_init(MjSimImpl * mj_sim,
 
 /*! Create GLFW window */
 void mujoco_create_window(MjSimImpl * mj_sim);
-
-/*! Sets initial qpos and qvel in mjData */
-bool mujoco_set_const(mjModel * m, mjData * d, const std::vector<double> & qpos, const std::vector<double> & qvel);
 
 /** Returns a sensor id from name, -1 if the type does not match or the sensor does not exist */
 int mujoco_get_sensor_id(const mjModel & m, const std::string & name, mjtSensor type);
