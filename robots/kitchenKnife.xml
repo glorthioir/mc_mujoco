@@ -1,5 +1,5 @@
 <mujoco model="kitchenKnife">
-	<compiler meshdir="assets" texturedir="assets" />
+	<compiler meshdir="assets" texturedir="assets" balanceinertia="true"/>
     <asset>
     	<texture name="texkitchenKnife" type="2d" builtin="gradient" width="128" height="128" rgb1=".74 .77 .79" rgb2="0.2 0.2 0.2"/>
 		<material name="matkitchenKnife" texture="texkitchenKnife" rgba=".44 .47 .49 1" />

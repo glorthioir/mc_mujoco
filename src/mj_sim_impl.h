@@ -193,8 +193,9 @@ private:
   std::chrono::time_point<std::chrono::system_clock> timer;
   std::vector<int> listOfObjectIndex;
   std::vector<int> listOfHandIndex;
-  int gazeIndex;
-  int fovIndex;
+  bool enableGaze = true;
+  int gazeIndex = -1;
+  int fovIndex = -2;
   Eigen::Vector3d originGazePos;
   Eigen::Quaternion<double> originQuat;
   double originGazeDistance;

@@ -131,7 +131,7 @@ endif()
 if(NOT COMBINED_MC_MUJOCO_LIB)
   set_target_properties(mc_mujoco_lib PROPERTIES EXPORT_NAME mc_mujoco)
 endif()
-#target_link_libraries(mc_mujoco_lib PUBLIC ${ZED_LIBS})
+target_link_libraries(mc_mujoco_lib PUBLIC -lopencv_core)
 
 find_package(Boost REQUIRED COMPONENTS program_options)
 

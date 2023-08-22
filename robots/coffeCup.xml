@@ -1,7 +1,7 @@
 <mujoco model="coffeCup">
 	<compiler meshdir="assets" texturedir="assets" />
     <asset>
-        <mesh name="coffeCup_mesh" file="coffeCup.obj" scale=".03 .03 .03" />
+        <mesh name="coffeCup_mesh" file="coffeCup.obj" scale=".025 .035 .025" />
 		<texture name="texgeom" type="cube" builtin="flat" mark="cross" width="128" height="128" rgb1="0.6 0.6 0.6" rgb2="0.6 0.6 0.6" markrgb="1 1 1"/>
 		<material name='object' texture="texgeom" texuniform="true" rgba=".4 .4 .9 1" />
     </asset>
@@ -20,7 +20,7 @@
       <body name="base_link">
         <freejoint name="root" />
         <inertial pos="-0.000000000134 0.03466 -0.000000000128" mass="0.35" diaginertia="0.00031192 0.00031192 0.00026349"/>
-        <geom class="collision" name ="collision" type="mesh" mesh="coffeCup_mesh" rgba="0.266754 0.174546 0.0644028 1" />
+        <geom class="collision" name ="collision" friction="1 0.01 0.05" type="mesh" mesh="coffeCup_mesh" rgba="0.266754 0.174546 0.0644028 1" />
         <geom class="visual" group="1" type="mesh" mesh="coffeCup_mesh" material="object"/>
         <geom name ="grabbingPos1" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 0.035 0.03" euler="1.7 0 0"/>
         <geom name ="grabbingPos2" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 0.035 -0.03" euler="-1.7 0 0"/>

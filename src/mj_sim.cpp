@@ -586,6 +586,10 @@ void MjSimImpl::makeDatastoreCalls()
         originGazeDistance = originGazePos.norm();
         continue;
       }
+      else
+      {
+        enableGaze = false;
+      }
       if(geomName.find("fov_cone") != std::string::npos)
       {
         fovIndex = i;
@@ -612,6 +616,7 @@ void MjSimImpl::makeDatastoreCalls()
   goalsName.push_back("cut_potato");
   goalsName.push_back("cook_potato1");
   goalsName.push_back("cook_potato2");
+  goalsName.push_back("undecided");
   int goalIndex = mapOfGoalPositions.size();
   goalPreconditions[goalIndex] = {mapOfObjectsNames["pitch"]};
   goalPreconditions[goalIndex+1] = {mapOfObjectsNames["bottle"]};
@@ -619,6 +624,7 @@ void MjSimImpl::makeDatastoreCalls()
   int potatoIndex = mapOfObjectsNames["potato1"];
   goalPreconditions[goalIndex+3] = {potatoIndex};
   goalPreconditions[goalIndex+4] = {mapOfObjectsNames["potato2"]};
+  goalPreconditions[goalIndex+5] = {};    //For "undecided" goal
 
   // Maybe need to design a landmark table here
 
@@ -667,6 +673,10 @@ void MjSimImpl::makeDatastoreCalls()
     targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
   for(unsigned int j = 0; j < 4; ++j)
     targetOrientations.push_back(0.0);
+  goalIndex++;
+
+  mapOfGoalPositions[goalIndex] = {};
+  mapOfGoalOrientations[goalIndex] = {};
 
   for(unsigned int i = 0; i < mapOfGoalPositions.size(); ++i){
     completedGoals.push_back(false);
@@ -972,7 +982,6 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
 
   for(unsigned int i = 0; i < data->ncon; i++)
   {
-
     int firstGeomID = data->contact[i].geom1;
     int secondGeomID = data->contact[i].geom2;
     if(mapOfHandGeoms.find(firstGeomID) != mapOfHandGeoms.end())
@@ -1073,21 +1082,24 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     isLookingAt[mapOfObjectsNames[i->first]] = i->second;
   }
 
-  auto & gazeVectors = controller->controller().datastore().get<std::vector<double>>("gazeVectors");
-  Eigen::Vector3d directionalVector = {gazeVectors[3] - gazeVectors[0], gazeVectors[4] - gazeVectors[1], gazeVectors[5] - gazeVectors[2]};
-  if(!previousDirectionalVector.isApprox(directionalVector))
+  if(enableGaze)
   {
-    previousDirectionalVector = directionalVector;  
-    double newGazeDistance = std::sqrt((gazeVectors[3] - gazeVectors[0])*(gazeVectors[3] - gazeVectors[0]) + (gazeVectors[4] - gazeVectors[1])*(gazeVectors[4] - gazeVectors[1]) + (gazeVectors[5] - gazeVectors[2])*(gazeVectors[5] - gazeVectors[2]));
-    for(unsigned int i = 0; i < 3; i++)
-      model->geom_pos[gazeIndex*3+i] = (originGazeDistance/newGazeDistance) * directionalVector[i] + gazeVectors[i];
-    Eigen::Quaternion<double> newQuat = Eigen::Quaternion<double>::FromTwoVectors(originGazePos, directionalVector) * originQuat;
+    auto & gazeVectors = controller->controller().datastore().get<std::vector<double>>("gazeVectors");
+    Eigen::Vector3d directionalVector = {gazeVectors[3] - gazeVectors[0], gazeVectors[4] - gazeVectors[1], gazeVectors[5] - gazeVectors[2]};
+    if(!previousDirectionalVector.isApprox(directionalVector))
+    {
+      previousDirectionalVector = directionalVector;  
+      double newGazeDistance = std::sqrt((gazeVectors[3] - gazeVectors[0])*(gazeVectors[3] - gazeVectors[0]) + (gazeVectors[4] - gazeVectors[1])*(gazeVectors[4] - gazeVectors[1]) + (gazeVectors[5] - gazeVectors[2])*(gazeVectors[5] - gazeVectors[2]));
+      for(unsigned int i = 0; i < 3; i++)
+        model->geom_pos[gazeIndex*3+i] = (originGazeDistance/newGazeDistance) * directionalVector[i] + gazeVectors[i];
+      Eigen::Quaternion<double> newQuat = Eigen::Quaternion<double>::FromTwoVectors(originGazePos, directionalVector) * originQuat;
 
-    model->geom_quat[gazeIndex*4] = newQuat.w();
-    model->geom_quat[gazeIndex*4+1] = newQuat.x();
-    model->geom_quat[gazeIndex*4+2] = newQuat.y();
-    model->geom_quat[gazeIndex*4+3] = newQuat.z();
+      model->geom_quat[gazeIndex*4] = newQuat.w();
+      model->geom_quat[gazeIndex*4+1] = newQuat.x();
+      model->geom_quat[gazeIndex*4+2] = newQuat.y();
+      model->geom_quat[gazeIndex*4+3] = newQuat.z();
 
+    }
   }
 
 }
@@ -1521,22 +1533,36 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
 
   camera.fixedcamid = 0;
   camera.type = mjCAMERA_FIXED;
-  mjrRect_& rect_window = uistate.rect[0];
+  #ifdef USE_UI_ADAPTER
+    platform_ui_adapter->state().rect[0];
+  #else
+    mjrRect_& rect_window = uistate.rect[0];
+  #endif
   int height = rect_window.height;
   int width = rect_window.width;
   
   unsigned char* rgbL = (unsigned char*)std::malloc(3*height*width);
   float* depthL = (float*)std::malloc(sizeof(float)*height*width);
   mjv_updateScene(model, data, &options, &pert, &camera, mjCAT_ALL, &scene);
-  mjr_render(rect_window, &scene, &context);
-  mjr_readPixels(rgbL, depthL, rect_window, &context);
+  #ifdef USE_UI_ADAPTER
+    mjr_render(rect_window, &scene, &platform_ui_adapter->mjr_context());
+    mjr_readPixels(rgbL, depthL, rect_window, &platform_ui_adapter->mjr_context());
+  #else
+    mjr_render(rect_window, &scene, &context);
+    mjr_readPixels(rgbL, depthL, rect_window, &context);
+  #endif
   
   camera.fixedcamid = 1;
   unsigned char* rgbR = (unsigned char*)std::malloc(3*height*width);
   float* depthR = (float*)std::malloc(sizeof(float)*height*width);
   mjv_updateScene(model, data, &options, &pert, &camera, mjCAT_ALL, &scene);
-  mjr_render(rect_window, &scene, &context);
-  mjr_readPixels(rgbR, depthR, rect_window, &context);
+  #ifdef USE_UI_ADAPTER
+    mjr_render(rect_window, &scene, &platform_ui_adapter->mjr_context());
+    mjr_readPixels(rgbR, depthR, rect_window, &platform_ui_adapter->mjr_context());
+  #else
+    mjr_render(rect_window, &scene, &context);
+    mjr_readPixels(rgbR, depthR, rect_window, &context);
+  #endif
 
   // Create CV images from data
   cv::Mat rgb_image_left_flip(height, width, CV_8UC3, rgbL);

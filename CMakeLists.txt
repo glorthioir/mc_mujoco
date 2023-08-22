@@ -62,26 +62,6 @@ set(OpenGL_GL_PREFERENCE "GLVND")
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 
-# find ZED SDK
-#option(LINK_SHARED_ZED "Link with the ZED SDK shared executable" ON)
-
-#if (NOT LINK_SHARED_ZED AND MSVC)
-#  message(FATAL_ERROR "LINK_SHARED_ZED OFF : ZED SDK static libraries not available on Windows")
-#endif()
-
-#find_package(ZED 3 REQUIRED)
-#find_package(CUDA ${ZED_CUDA_VERSION} REQUIRED)
-#include_directories(${CUDA_INCLUDE_DIRS})
-#include_directories(${ZED_INCLUDE_DIRS})
-#link_directories(${ZED_LIBRARY_DIR})
-#link_directories(${CUDA_LIBRARY_DIRS})
-
-#if (LINK_SHARED_ZED)
-#  set(ZED_LIBS ${ZED_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUDART_LIBRARY})
-#else()
-#  set(ZED_LIBS ${ZED_STATIC_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_LIBRARY})
-#endif()
-
 # find mujoco library
 if(USE_GL)
   file(GLOB LIB_MUJOCO ${MUJOCO_BIN_DIR}/libmujoco[0-9][0-9][0-9].so ${MUJOCO_LIB_DIR}/libmujoco.so.*)
