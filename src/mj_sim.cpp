@@ -1534,7 +1534,7 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
   camera.fixedcamid = 0;
   camera.type = mjCAMERA_FIXED;
   #ifdef USE_UI_ADAPTER
-    platform_ui_adapter->state().rect[0];
+    mjrRect & rect_window = platform_ui_adapter->state().rect[0];
   #else
     mjrRect_& rect_window = uistate.rect[0];
   #endif
