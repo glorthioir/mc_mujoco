@@ -1,0 +1,32 @@
+<mujoco model="salt">
+	<compiler meshdir="assets" texturedir="assets" />
+    <asset>
+        <mesh name="salt_mesh" file="salt.obj" scale="0.008 0.008 0.008" />
+	<texture name="texgeom" type="cube" builtin="gradient" width="128" height="128"
+		 rgb1="1 0.1 0.3" rgb2="1 0.7 0.7"/>
+	<material name='object' texture="texgeom" texuniform="true"/>
+    </asset>
+
+    <default>
+        <default class="collision">
+            <geom condim="6" group="0" />
+        </default>
+        <default class="visual">
+        	<geom condim="6" conaffinity="0" contype="0" mass="0" gap="10"/>
+        </default>
+    </default>
+
+    <worldbody>
+      <light mode="targetbodycom" target="base_link" directional="false" diffuse=".8 .8 .8" specular="0.3 0.3 0.3" pos="0 0 4.0" dir="0 0 -1" active="false"/>
+      <body name="base_link">
+        <freejoint name="root" />
+        <inertial pos="0 0 0.02" mass="0.085" diaginertia="0.000057 0.000057 0.0000138"/>
+        <geom class="collision" name ="collision" friction="1 .04 0.0001" type="cylinder" size="0.018 0.042" pos="0.0 0.0 0.042"/>
+        <geom class="visual" group="1" type="mesh" mesh="salt_mesh" material="object" />
+        <geom name ="grabbingPos1" class="visual" group="4" type="cylinder" size="0.005 0.015" pos="0.024 0 0.025"/>
+        <geom name ="grabbingPos2" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="-0.024 0 0.025"/>
+        <geom name ="grabbingPos3" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 0.024 0.025"/>
+        <geom name ="grabbingPos4" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 -0.024 0.025"/>
+      </body>
+    </worldbody>
+</mujoco>

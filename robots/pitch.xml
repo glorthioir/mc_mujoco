@@ -20,13 +20,13 @@
   <light mode="targetbodycom" target="base_link" directional="false" diffuse=".8 .8 .8" specular="0.3 0.3 0.3" pos="0 0 4.0" dir="0 0 -1" active="false"/>
   <body name="base_link" pos="0 0 0">
     <freejoint/>
-    <inertial pos="-0.00973898 0.03622926 0.12166579" mass="1.2" diaginertia="0.0253461 0.02325945 0.00873718"/>
-    <geom class="collision" name ="collision" friction="1 0.01 0.05" type="cylinder" size="0.05 0.115" pos="-0.015 0.03 0.111"/>
+    <inertial pos="-0.01241792 0.03256316 0.11285754" mass="1.2" diaginertia="0.0064519424 0.0060700096 0.00182944"/>
+    <geom class="collision" name ="collision" friction="1 0.03 0.005" type="cylinder" size="0.05 0.115" pos="-0.015 0.03 0.111"/>
     <geom class="collision" name ="collision2" type="capsule" size="0.01 0.05" pos="0.06 0.104 0.16"/>
     <geom class="collision" name ="collision3" type="capsule" size="0.01 0.025" pos="0.04 0.085 0.22" euler="1.42 2.4 0"/>
     <geom class="collision" name ="collision4" type="capsule" size="0.01 0.025" pos="0.04 0.085 0.09" euler="-1.1 -2.4 0"/>
     <geom class="visual" type="mesh" material="pitch" mesh="pitch" group="1"/>
-    <geom name ="grabbingPos" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0.062 0.102 0.16" euler="3.14 0 -1.57"/>
+    <geom name ="grabbingPos" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0.07 0.115 0.16" euler="3.14 0 -1.57"/>
   </body>
 </worldbody>
 </mujoco>

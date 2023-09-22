@@ -18,13 +18,19 @@
 
 <worldbody>
   <light pos=".4 -.4 .3" dir="-2 2 -1.5" diffuse=".6 .6 .6" active="false"/>
-  <body name="base_link" pos="0 0 0.01">
-    <freejoint/>
-    <inertial pos="-0.06544246 0.00215232 0.01742793" mass="1" diaginertia="0.0103 0.0072 0.0037"/>
-    <geom class="collision" name ="collision" friction="1 0.01 0.5" type="cylinder" size="0.09 0.012" pos="-0.08 0 0.01"/>
+  <body name="base_link">
+    <inertial pos="-0.07 0 0.005" mass="2" diaginertia="0.0118684 0.00868484 0.00426346"/>
+    <geom class="collision" name ="collision" friction="1 0.08 0.005" type="cylinder" size="0.09 0.005" pos="-0.075 0 0."/>
     <geom class="collision" name ="collision2" type="capsule" size="0.01 0.08" pos="0.09 0.01 0.036" euler="0 1.42 0"/>
+    <geom class="collision" name ="collision3" type="box" size="0.08 0.012 0.005" pos="0.01 0 0.03" euler="1.57 1.57 0"/>
+    <geom class="collision" name ="collision4" type="box" size="0.08 0.012 0.005" pos="-0.165 0 0.03" euler="1.57 1.57 0"/>
+    <geom class="collision" name ="collision5" type="box" size="0.08 0.012 0.005" pos="-0.08 0.085 0.03" euler="1.57 0 0"/>
+    <geom class="collision" name ="collision6" type="box" size="0.08 0.012 0.005" pos="-0.08 -0.085 0.03" euler="1.57 0 0"/>
     <geom class="visual" type="mesh" material="frypan" mesh="frypan" group="1"/>
     <geom name ="grabbingPos" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0.09 0.01 0.05" euler="0 1.42 0"/>
+    <geom name ="goalPos_100" class="visual" group="2" size="0.005" pos="-0.08 0 0.20" rgba="0 1 0 1"/>
+    <geom name ="goalPos_75" class="visual" group="2" size="0.05" pos="-0.08 0 0.20" rgba="0.55 0.3 0 0.4"/>
+    <geom name ="goalPos_50" class="visual" group="2" size="0.1" pos="-0.08 0 0.20" rgba="0.8 0 0 0.15"/>
   </body>
 </worldbody>
 </mujoco>

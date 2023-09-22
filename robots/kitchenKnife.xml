@@ -21,7 +21,7 @@
         <freejoint name="root" />
         <inertial pos="-0.07 0.00719 -0.000000762" mass="0.5" diaginertia="0.00057 0.00056 0.0000076"/>
         <geom class="collision" name ="collision" type="ellipsoid" size="0.12 0.023 0.0005" pos="0.05 0.001 0" euler="0 0 0.1"/>
-    	<geom class="collision" name ="collision2" friction="1 0.001 0.005" type="box" size="0.06 0.012 0.005"  pos="-0.105 0.01 0"/>
+    	<geom class="collision" name ="collision2" friction="1 0.05 0.1" type="box" size="0.06 0.012 0.005"  pos="-0.105 0.01 0"/>
         <geom class="visual" group="1" type="mesh" mesh="kitchenKnife_mesh" material="matkitchenKnife" />
         <geom name ="grabbingPos" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="-0.105 0.018 0" euler="3.14 1.57 -1.57"/>
       </body>
