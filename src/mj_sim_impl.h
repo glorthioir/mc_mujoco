@@ -200,6 +200,7 @@ private:
   Eigen::Quaternion<double> originQuat;
   double originGazeDistance;
   Eigen::Vector3d previousDirectionalVector;
+  std::unordered_map<std::string, int> mapOfGoalNames;
   std::unordered_map<std::string, std::vector<int>> mapOfScoreGeom;
   std::unordered_map<std::string, std::vector<bool>> currentCollisionScore;
   std::unordered_map<std::string, std::vector<std::chrono::time_point<std::chrono::system_clock>>> currentCollisionScoreTimer;
