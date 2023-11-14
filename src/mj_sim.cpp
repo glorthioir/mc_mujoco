@@ -586,16 +586,13 @@ void MjSimImpl::makeDatastoreCalls()
       {
         gazeIndex = i;
         for (unsigned cpt = 0; cpt < 3; cpt++)
-          originGazePos[cpt] = data->xpos[i*3+cpt];
-        originQuat = {data->xquat[i*4], data->xquat[i*4+1], data->xquat[i*4+2], data->xquat[i*4+3]};
+          originGazePos[cpt] = model->geom_pos[i*3+cpt];
+        originQuat = {model->geom_quat[i*4], model->geom_quat[i*4+1], model->geom_quat[i*4+2], model->geom_quat[i*4+3]};
         if (!controller->controller().datastore().has("gazeVectors"))
           controller->controller().datastore().make_initializer<std::vector<double>>("gazeVectors", 0.0, 0.0, 0.0, 0.0, -0.3, -1.0);
         originGazeDistance = originGazePos.norm();
+        enableGaze = true;
         continue;
-      }
-      else
-      {
-        enableGaze = false;
       }
       if(geomName.find("fov_cone") != std::string::npos)
       {
@@ -1351,18 +1348,20 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   {
     auto & gazeVectors = controller->controller().datastore().get<std::vector<double>>("gazeVectors");
     Eigen::Vector3d directionalVector = {gazeVectors[3] - gazeVectors[0], gazeVectors[4] - gazeVectors[1], gazeVectors[5] - gazeVectors[2]};
+    std::cout << "Target position: " << gazeVectors[3] << ", " << gazeVectors[4] << ", " << gazeVectors[5] << std::endl;
+
     if(!previousDirectionalVector.isApprox(directionalVector))
     {
       previousDirectionalVector = directionalVector;  
       double newGazeDistance = std::sqrt((gazeVectors[3] - gazeVectors[0])*(gazeVectors[3] - gazeVectors[0]) + (gazeVectors[4] - gazeVectors[1])*(gazeVectors[4] - gazeVectors[1]) + (gazeVectors[5] - gazeVectors[2])*(gazeVectors[5] - gazeVectors[2]));
       for(unsigned int i = 0; i < 3; i++)
-        data->geom_xpos[gazeIndex*3+i] = (originGazeDistance/newGazeDistance) * directionalVector[i] + gazeVectors[i];
+        model->geom_pos[gazeIndex*3+i] = (originGazeDistance/newGazeDistance) * directionalVector[i] + gazeVectors[i];
       Eigen::Quaternion<double> newQuat = Eigen::Quaternion<double>::FromTwoVectors(originGazePos, directionalVector) * originQuat;
 
-      data->xquat[gazeIndex*4] = newQuat.w();
-      data->xquat[gazeIndex*4+1] = newQuat.x();
-      data->xquat[gazeIndex*4+2] = newQuat.y();
-      data->xquat[gazeIndex*4+3] = newQuat.z();
+      model->geom_quat[gazeIndex*4] = newQuat.w();
+      model->geom_quat[gazeIndex*4+1] = newQuat.x();
+      model->geom_quat[gazeIndex*4+2] = newQuat.y();
+      model->geom_quat[gazeIndex*4+3] = newQuat.z();
 
     }
   }
@@ -1691,7 +1690,7 @@ bool MjSimImpl::render()
 #else
     client->draw2D(window);
 #endif
-    client->draw3D();
+    //client->draw3D();
   }
   {
     auto right_margin = 5.0f;
