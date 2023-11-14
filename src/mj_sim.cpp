@@ -1348,7 +1348,6 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   {
     auto & gazeVectors = controller->controller().datastore().get<std::vector<double>>("gazeVectors");
     Eigen::Vector3d directionalVector = {gazeVectors[3] - gazeVectors[0], gazeVectors[4] - gazeVectors[1], gazeVectors[5] - gazeVectors[2]};
-    std::cout << "Target position: " << gazeVectors[3] << ", " << gazeVectors[4] << ", " << gazeVectors[5] << std::endl;
 
     if(!previousDirectionalVector.isApprox(directionalVector))
     {
