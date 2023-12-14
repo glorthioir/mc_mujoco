@@ -196,9 +196,13 @@ private:
   bool enableGaze = false;
   int gazeIndex = -1;
   int fovIndex = -2;
+  int groundIndex = -3;
+  bool firstTime = true;
   Eigen::Vector3d originGazePos;
-  Eigen::Quaternion<double> originQuat;
+  Eigen::Quaterniond originQuat;
   double originGazeDistance;
+  std::unordered_map<std::string, Eigen::Quaterniond> objectOriginQuat;
+  std::unordered_map<std::string, Eigen::Vector3d> objectOriginPos;
   Eigen::Vector3d previousDirectionalVector;
   std::unordered_map<std::string, int> mapOfGoalNames;
   std::unordered_map<std::string, std::vector<int>> mapOfScoreGeom;
@@ -208,6 +212,7 @@ private:
   std::unordered_map<std::string, int> mapOfObjectsNames;
   std::unordered_map<int, std::string> mapOfGeoms;
   std::unordered_map<int, std::string> mapOfHandGeoms;
+  std::unordered_map<std::string, int> mapOfFreeObjects;
   std::unordered_map<std::string, bool> currentCollision;
   std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> currentCollisionTimer;
   std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> noContactTimer;
