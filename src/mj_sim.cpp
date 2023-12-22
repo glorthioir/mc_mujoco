@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <cstdio>
 #include <unordered_map>
+#include <queue>
 
 #include "MujocoClient.h"
 #include "config.h"
@@ -658,8 +659,8 @@ void MjSimImpl::makeDatastoreCalls()
   mapOfGoalNames["pour_bottle"] = goalIndex;
   goalPreconditions[goalIndex++] = {mapOfObjectsNames["bottle"]};
   //goalPreconditions[goalIndex++] = {mapOfObjectsNames["knife"]};
-  int potatoIndex = mapOfObjectsNames["potato1"];
-  goalPreconditions[goalIndex++] = {potatoIndex};
+  mapOfGoalNames["cook_potato1"] = goalIndex;
+  goalPreconditions[goalIndex++] = {mapOfObjectsNames["potato1"]};
   //goalPreconditions[goalIndex++] = {mapOfObjectsNames["potato2"]};
   mapOfGoalNames["pour_salt"] = goalIndex;
   goalPreconditions[goalIndex++] = {mapOfObjectsNames["salt"]};
@@ -667,11 +668,11 @@ void MjSimImpl::makeDatastoreCalls()
   goalPreconditions[goalIndex++] = {mapOfObjectsNames["sauce"]};
   goalPreconditions[goalIndex++] = {};    //For "undecided" goal
 
-  // Maybe need to design a landmark table here
+  //Maybe need to design a landmark table here
 
   currentGoalTimer = {{"pour_pitch", std::chrono::system_clock::now()}, {"pour_bottle", std::chrono::system_clock::now()}, {"cook_potato1", std::chrono::system_clock::now()}, {"pour_salt", std::chrono::system_clock::now()}, {"pour_sauce", std::chrono::system_clock::now()}};
   int cupIndex = mapOfObjectsNames["cup"]*3;
-  potatoIndex *= 3;
+  //int potatoIndex = 3*mapOfObjectsNames["potato1"];
   int panIndex = mapOfObjectsNames["pan"]*3;
   std::vector<double> cupPos = {targetPositions[cupIndex], targetPositions[cupIndex+1], targetPositions[cupIndex+2]};
 
@@ -961,7 +962,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   for (unsigned cpt = 0; cpt < 3; cpt++)
     cupTopScorePosition.push_back(data->geom_xpos[mapOfScoreGeom["cup"][0]*3+cpt]);
   for (unsigned cpt = 0; cpt < 3; cpt++)
-    cupTopScorePosition.push_back(data->geom_xpos[mapOfScoreGeom["cup"][1]*3+cpt]);
+    cupTopScorePosition.push_back(data->geom_xpos[mapOfScoreGeom["cup"][3]*3+cpt]);
   for (unsigned cpt = 0; cpt < 3; cpt++)
     frypanTopScorePosition.push_back(data->geom_xpos[mapOfScoreGeom["pan"][0]*3+cpt]);
 
@@ -1035,6 +1036,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
     newGoalIndex++;
   }
+  /*
   squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[potatoIndex]) + 
                           (mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[potatoIndex+1]) +
                           (mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex+2])*(mapOfGoalPositions[goalIndex][2] - targetPositions[potatoIndex+2]);                         
@@ -1046,7 +1048,8 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     }
   }
   else
-    currentGoalTimer["cook_potato1"] = std::chrono::system_clock::now(); 
+    currentGoalTimer["cook_potato1"] = std::chrono::system_clock::now();
+  */ 
   goalIndex++;
   mapOfGoalPositions[goalIndex] = frypanTopScorePosition; // Salt 15cm over the frypan
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
@@ -1326,6 +1329,37 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       }
     }
 
+    elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["cook_potato1"];
+    if(elapsed_time.count() > deltaContact)
+      completedGoals[mapOfGoalNames["cook_potato1"]] = false;
+    if(mapOfGeoms.find(firstGeomID) != mapOfGeoms.end() && mapOfGeoms[firstGeomID] == "potato1")
+    {
+      if(mapOfGeoms.find(secondGeomID) != mapOfGeoms.end() && mapOfGeoms[secondGeomID] == "pan")
+      {
+        currentGoalTimer["cook_potato1"] = std::chrono::system_clock::now();
+        if(!completedGoals[mapOfGoalNames["cook_potato1"]])
+        {
+          completedGoals[mapOfGoalNames["cook_potato1"]] = true;
+          newGoalAchieved = true;
+        }
+        noContactTimer[mapOfGeoms[firstGeomID]] = std::chrono::system_clock::now();
+        continue;
+      }
+    }
+    else if(mapOfGeoms.find(secondGeomID) != mapOfGeoms.end() && mapOfGeoms[secondGeomID] == "potato1")
+    {
+      if(mapOfGeoms.find(firstGeomID) != mapOfGeoms.end() && mapOfGeoms[firstGeomID] == "pan")
+      {
+        currentGoalTimer["cook_potato1"] = std::chrono::system_clock::now();
+        if(!completedGoals[mapOfGoalNames["cook_potato1"]])
+        {
+          completedGoals[mapOfGoalNames["cook_potato1"]] = true;
+          newGoalAchieved = true;
+        }
+        noContactTimer["potato1"] = std::chrono::system_clock::now();
+        continue;
+      }
+    }
   }
 
   elapsed_time = std::chrono::system_clock::now() - current_time;
@@ -1519,8 +1553,8 @@ void MjSimImpl::updateData()
   std::chrono::duration<double> elapsed_time = std::chrono::system_clock::now() - timer;
   if (elapsed_time.count() > 0.3)
   {
-    updateTeleopData(2.0, 2.0, 2.0, 1.0);
     timer = std::chrono::system_clock::now();
+    updateTeleopData(2.0, 2.0, 2.0, 1.0);
   }
 }
 
@@ -1852,7 +1886,8 @@ bool MjSimImpl::render()
 #endif
 }
 
-void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right)
+void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right, std::queue<cv::Mat> & buffer_left,
+                                  std::queue<cv::Mat> & buffer_right, std::chrono::duration<double> time_from_start, int framerate, double delay_seconds)
 {
   int initialCameraType = camera.type;
   int initialCamera = camera.fixedcamid;
@@ -1891,8 +1926,8 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
   #endif
 
   // Create CV images from data
-  cv::Mat rgb_image_left_flip(height, width, CV_8UC3, rgbL);
-  cv::Mat rgb_image_right_flip(height, width, CV_8UC3, rgbR);
+  cv::Mat rgb_image_left_flip(height, width, CV_8UC3, rgbL, cv::Mat::AUTO_STEP);
+  cv::Mat rgb_image_right_flip(height, width, CV_8UC3, rgbR, cv::Mat::AUTO_STEP);
   //cv::Mat depth_image_left(height, width, CV_32FC1, depthL);
   //cv::Mat depth_image_right(height, width, CV_32FC1, depthR);
 
@@ -1902,37 +1937,49 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
   cv::flip(rgb_image_left_flip, rgb_image_left, 0);
   cv::flip(rgb_image_right_flip, rgb_image_right, 0);
 
-  // Convert CV images to ROS messages
-  sensor_msgs::ImagePtr rgb_msg_left = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_left).toImageMsg();
-  sensor_msgs::ImagePtr rgb_msg_right = cv_bridge::CvImage(std_msgs::Header(), "rgb8", rgb_image_right).toImageMsg();
-  //sensor_msgs::ImagePtr depth_msg_left = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_left).toImageMsg();
-  //sensor_msgs::ImagePtr depth_msg_right = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_right).toImageMsg();
-  
-  // Set ROS message header information
-  rgb_msg_left->header.stamp = ros::Time::now();
-  rgb_msg_right->header.stamp = ros::Time::now();
-  rgb_msg_left->header.frame_id = "camera_rgb_left";
-  rgb_msg_right->header.frame_id = "camera_rgb_right";
-  /*
-  depth_msg_left->header.stamp = ros::Time::now();
-  depth_msg_right->header.stamp = ros::Time::now();
-  depth_msg_left->header.frame_id = "camera_depth_left";
-  depth_msg_right->header.frame_id = "camera_depth_right";
-  */
-
-  // Publish RGB and depth messages using CameraPublisher
-  sensor_msgs::CameraInfoPtr camera_info_left(new sensor_msgs::CameraInfo());
-  camera_info_left->header.stamp = ros::Time::now();
-  camera_info_left->header.frame_id = "camera_rgb_left";
-  pub_rgb_left.publish(rgb_msg_left, camera_info_left);
-
-  sensor_msgs::CameraInfoPtr camera_info_right(new sensor_msgs::CameraInfo());
-  camera_info_right->header.stamp = ros::Time::now();
-  camera_info_right->header.frame_id = "camera_rgb_right";
-  pub_rgb_right.publish(rgb_msg_right, camera_info_right);
-
   camera.fixedcamid = initialCamera;
   camera.type = initialCameraType;
+
+  // Delay and publish frames from the buffer
+  buffer_left.push(rgb_image_left);
+  buffer_right.push(rgb_image_right);
+  std::cout << time_from_start.count() << std::endl;
+
+  if (time_from_start.count() >= delay_seconds)
+  {
+    std::cout << buffer_left.size() << std::endl;
+    // Convert CV images to ROS messages
+    sensor_msgs::ImagePtr rgb_msg_left = cv_bridge::CvImage(std_msgs::Header(), "rgb8", buffer_left.front()).toImageMsg();   // Pop the first element
+    sensor_msgs::ImagePtr rgb_msg_right = cv_bridge::CvImage(std_msgs::Header(), "rgb8", buffer_right.front()).toImageMsg();
+    //sensor_msgs::ImagePtr depth_msg_left = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_left).toImageMsg();
+    //sensor_msgs::ImagePtr depth_msg_right = cv_bridge::CvImage(std_msgs::Header(), "32FC1", depth_image_right).toImageMsg();
+
+    // Set ROS message header information
+    rgb_msg_left->header.stamp = ros::Time::now();
+    rgb_msg_right->header.stamp = ros::Time::now();
+    rgb_msg_left->header.frame_id = "camera_rgb_left";
+    rgb_msg_right->header.frame_id = "camera_rgb_right";
+    /*
+    depth_msg_left->header.stamp = ros::Time::now();
+    depth_msg_right->header.stamp = ros::Time::now();
+    depth_msg_left->header.frame_id = "camera_depth_left";
+    depth_msg_right->header.frame_id = "camera_depth_right";
+    */
+
+    // Publish RGB and depth messages using CameraPublisher
+    sensor_msgs::CameraInfoPtr camera_info_left(new sensor_msgs::CameraInfo());
+    camera_info_left->header.stamp = ros::Time::now();
+    camera_info_left->header.frame_id = "camera_rgb_left";
+    pub_rgb_left.publish(rgb_msg_left, camera_info_left);
+
+    sensor_msgs::CameraInfoPtr camera_info_right(new sensor_msgs::CameraInfo());
+    camera_info_right->header.stamp = ros::Time::now();
+    camera_info_right->header.frame_id = "camera_rgb_right";
+    pub_rgb_right.publish(rgb_msg_right, camera_info_right);
+
+    buffer_left.pop();  
+    buffer_right.pop();
+  }
 
   // Free malloc allocation
   free(rgbL);
@@ -2097,9 +2144,10 @@ bool MjSim::render()
   return impl->render();
 }
 
-void MjSim::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right)
+void MjSim::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right, std::queue<cv::Mat> & buffer_left,
+                          std::queue<cv::Mat> & buffer_right, std::chrono::duration<double> time_from_start, int framerate, double delay_seconds)
 {
-  impl->publishCameraTopic(pub_rgb_left, pub_rgb_right);
+  impl->publishCameraTopic(pub_rgb_left, pub_rgb_right, buffer_left, buffer_right, time_from_start, framerate, delay_seconds);
 }
 
 mc_control::MCGlobalController * MjSim::controller() noexcept

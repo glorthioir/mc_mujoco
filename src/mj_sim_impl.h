@@ -318,7 +318,8 @@ public:
 
   bool render();
 
-  void publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right);
+  void publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right, std::queue<cv::Mat> & buffer_left,
+                          std::queue<cv::Mat> & buffer_right, std::chrono::duration<double> time_from_start, int framerate, double delay_seconds);
 
   //sl::Mat cvMat2slMat(cv::Mat &input); 
 

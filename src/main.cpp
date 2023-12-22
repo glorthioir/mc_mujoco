@@ -17,8 +17,12 @@ namespace po = boost::program_options;
 bool render_state = true;
 std::chrono::time_point<std::chrono::system_clock> timer;
 std::chrono::duration<double> elapsed_time;
-double refresheRate = 30;
-double frequency = 1.0/refresheRate;
+int framerate = 33;    // About 30fps actually
+double frequency = 1.0/framerate;
+
+const double delay_seconds = 3;
+std::queue<cv::Mat> buffer_left;
+std::queue<cv::Mat> buffer_right;
 
 void simulate(mc_mujoco::MjSim & mj_sim)
 {
@@ -83,17 +87,20 @@ int main(int argc, char * argv[])
   image_transport::ImageTransport it(nh);
   image_transport::CameraPublisher pub_rgb_left = it.advertiseCamera("/HRP4CR/ZED_MINI_LEFT_1080P/image_raw", 1);
   image_transport::CameraPublisher pub_rgb_right = it.advertiseCamera("/HRP4CR/ZED_MINI_RIGHT_1080P/image_raw", 1);
-  timer = std::chrono::system_clock::now();
 
   std::thread simThread(simulate, std::ref(mj_sim));
 
+  timer = std::chrono::system_clock::now();
+  std::chrono::time_point<std::chrono::system_clock> starting_time = std::chrono::system_clock::now();
+  std::chrono::duration<double> time_from_start;
   while(render_state)
   {
     if(ros::ok()){
       elapsed_time = std::chrono::system_clock::now() - timer;
-      if (elapsed_time.count() > frequency){
-        mj_sim.publishCameraTopic(pub_rgb_left, pub_rgb_right);
+      time_from_start = std::chrono::system_clock::now() - starting_time;
+      if(elapsed_time.count() >= frequency){
         timer = std::chrono::system_clock::now();
+        mj_sim.publishCameraTopic(pub_rgb_left, pub_rgb_right, buffer_left, buffer_right, time_from_start, framerate, delay_seconds);
       }
     }
     mj_sim.updateScene();

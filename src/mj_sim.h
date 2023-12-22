@@ -6,6 +6,9 @@
 
 #include <image_transport/camera_publisher.h>
 #include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <opencv2/opencv.hpp>
+#include <queue>
 
 #include "mujoco.h"
 
@@ -47,7 +50,8 @@ public:
   void stopSimulation();
 
   /*! Render the facial cameras and publish them to ROS */
-  void publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right);
+  void publishCameraTopic(image_transport::CameraPublisher & pub_rgb_left, image_transport::CameraPublisher & pub_rgb_right, std::queue<cv::Mat> & buffer_left,
+                          std::queue<cv::Mat> & buffer_right, std::chrono::duration<double> time_from_start, int framerate, double delay_seconds);
 
   /*! Prepare to render */
   void updateScene();
