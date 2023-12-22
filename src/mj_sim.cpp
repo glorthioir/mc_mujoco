@@ -1943,11 +1943,9 @@ void MjSimImpl::publishCameraTopic(image_transport::CameraPublisher & pub_rgb_le
   // Delay and publish frames from the buffer
   buffer_left.push(rgb_image_left);
   buffer_right.push(rgb_image_right);
-  std::cout << time_from_start.count() << std::endl;
 
   if (time_from_start.count() >= delay_seconds)
   {
-    std::cout << buffer_left.size() << std::endl;
     // Convert CV images to ROS messages
     sensor_msgs::ImagePtr rgb_msg_left = cv_bridge::CvImage(std_msgs::Header(), "rgb8", buffer_left.front()).toImageMsg();   // Pop the first element
     sensor_msgs::ImagePtr rgb_msg_right = cv_bridge::CvImage(std_msgs::Header(), "rgb8", buffer_right.front()).toImageMsg();

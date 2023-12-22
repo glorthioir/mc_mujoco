@@ -20,7 +20,7 @@ std::chrono::duration<double> elapsed_time;
 int framerate = 33;    // About 30fps actually
 double frequency = 1.0/framerate;
 
-const double delay_seconds = 3;
+const double delay_seconds = 1;
 std::queue<cv::Mat> buffer_left;
 std::queue<cv::Mat> buffer_right;
 
