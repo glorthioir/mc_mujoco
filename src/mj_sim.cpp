@@ -266,7 +266,7 @@ void MjObject::initialize(mjModel * model)
   }
 }
 
-void MjRobot::initialize(mjModel * model, const mc_rbdyn::Robot & robot)
+void MjRobot::initialize(mjModel * model, const mc_rbdyn::Robot & robot, bool fix_base = false)
 {
   mj_jnt_ids.resize(0);
   for(const auto & j : mj_jnt_names)
@@ -300,6 +300,23 @@ void MjRobot::initialize(mjModel * model, const mc_rbdyn::Robot & robot)
     root_qpos_idx = model->jnt_qposadr[root_joint_id];
     root_qvel_idx = model->jnt_dofadr[root_joint_id];
   }
+
+  // fix base if needed
+  if(fix_base)
+  {
+    if(!root_joint.empty())
+    {
+      auto root_joint_id = mj_name2id(model, mjOBJ_JOINT, root_joint.c_str());
+      for(unsigned int j = 0; j < model->nv; j++)
+      {
+        if(model->dof_jntid[j] == root_joint_id)
+        {
+          model->dof_damping[j] = mjMAXVAL;
+        }
+      }
+    }
+  }
+
   auto init_sensor_id = [&](const char * mj_name, const char * mc_name, const std::string & sensor_name,
                             const char * suffix, mjtSensor type, std::unordered_map<std::string, int> & mapping) {
     auto mj_sensor = prefixed(fmt::format("{}_{}", sensor_name, suffix));
@@ -440,7 +457,7 @@ void MjSimImpl::setSimulationInitialState()
     for(auto & r : robots)
     {
       const auto & robot = controller->robots().robot(r.name);
-      r.initialize(model, robot);
+      r.initialize(model, robot, config.fix_base_link);
       if(r.root_qpos_idx != -1)
       {
         const auto & t = robot.posW().translation();
@@ -496,6 +513,7 @@ void MjSimImpl::makeDatastoreCalls()
   std::vector<double> handsPositions;
   std::vector<double> handsOrientations;
   std::unordered_map<int, std::vector<int>> goalPreconditions;
+  std::unordered_map<std::string, bool> tableCollision;
   listOfHandIndex.resize(0);
   int j = 0;
   int freeObjectsCpt = 0;
@@ -510,9 +528,9 @@ void MjSimImpl::makeDatastoreCalls()
       objectName = objectName.substr(0, objectName.find('_'));
       goalsName.push_back("grab_"+objectName);
       goalPreconditions[i] = {};
-      targetPositions.push_back(data->xpos[i*3]);
-      targetPositions.push_back(data->xpos[i*3+1]);
-      targetPositions.push_back(data->xpos[i*3+2]);
+      //targetPositions.push_back(data->xpos[i*3]);
+      //targetPositions.push_back(data->xpos[i*3+1]);
+      //targetPositions.push_back(data->xpos[i*3+2]);
       targetOrientations.push_back(data->xquat[i*4]);
       targetOrientations.push_back(data->xquat[i*4+1]);
       targetOrientations.push_back(data->xquat[i*4+2]);
@@ -520,7 +538,10 @@ void MjSimImpl::makeDatastoreCalls()
       listOfObjectIndex.push_back(i);
       if(objectName.compare("pan") != 0)
       {
-        mapOfFreeObjects [objectName] = freeObjectsCpt;
+        mapOfFreeObjects[objectName] = freeObjectsCpt;
+        groundCollisionTimer[objectName] = data->time;
+        groundCollision[objectName] = false;
+        tableCollision[objectName] = false;
         freeObjectsCpt++;
       }
       mapOfObjectsNames[objectName] = j;
@@ -563,6 +584,11 @@ void MjSimImpl::makeDatastoreCalls()
       if(strcmp(geomNameTmp, "ground_floor") == 0)
       {
         groundIndex = i;
+        continue;
+      }
+      else if(strcmp(geomNameTmp, "longtable_main") == 0)
+      {
+        tableIndex = i;
         continue;
       }
       else
@@ -628,6 +654,14 @@ void MjSimImpl::makeDatastoreCalls()
           currentCollisionScore[geomName].push_back(false);
           continue;
         }
+        if(geomName.find("objectPos") != std::string::npos)
+        {
+          targetPositions.push_back(data->geom_xpos[i*3]);
+          targetPositions.push_back(data->geom_xpos[i*3+1]);
+          targetPositions.push_back(data->geom_xpos[i*3+2]);
+          listOfPosIndex.push_back(i);
+          continue;
+        }
         geomName = geomName.substr(0, geomName.find('_'));
         int objectIndex = mapOfObjectsNames[geomName];
         mapOfGoalPositions[objectIndex].push_back(data->geom_xpos[i*3]);
@@ -674,7 +708,8 @@ void MjSimImpl::makeDatastoreCalls()
   int cupIndex = mapOfObjectsNames["cup"]*3;
   //int potatoIndex = 3*mapOfObjectsNames["potato1"];
   int panIndex = mapOfObjectsNames["pan"]*3;
-  std::vector<double> cupPos = {targetPositions[cupIndex], targetPositions[cupIndex+1], targetPositions[cupIndex+2]};
+  //std::vector<double> cupPos = {targetPositions[cupIndex], targetPositions[cupIndex+1], targetPositions[cupIndex+2]};
+  //targetPositions[cupIndex] += 0.1; // moving the target pos of the cup a bit
 
   goalIndex = mapOfGoalPositions.size();
   mapOfGoalPositions[goalIndex] = cupTopScorePosition;  // We want the pitch about 20 cm above the cup
@@ -701,7 +736,7 @@ void MjSimImpl::makeDatastoreCalls()
     targetOrientations.push_back(0.0);
   goalIndex++;*/
 
-  mapOfGoalPositions[goalIndex] = {targetPositions[panIndex]+0.05, targetPositions[panIndex+1]+0.04, targetPositions[panIndex+2]+0.08}; // Potato in the frypan
+  mapOfGoalPositions[goalIndex] = {targetPositions[panIndex]+0.05, targetPositions[panIndex+1]+0.04, targetPositions[panIndex+2]+0.1}; // Potato in the frypan
   mapOfGoalOrientations[goalIndex] = {0.0, 0.0, 0.0, 0.0};
   for(unsigned int i = 0; i < 3; ++i)
     targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
@@ -757,6 +792,7 @@ void MjSimImpl::makeDatastoreCalls()
   controller->controller().datastore().make<std::unordered_map<int, std::vector<double>>>("mapOfGoalPositions", mapOfGoalPositions);
   controller->controller().datastore().make<std::unordered_map<int, std::vector<double>>>("mapOfGoalOrientations", mapOfGoalOrientations);
   controller->controller().datastore().make<std::unordered_map<std::string, double>>("operatorScore", operatorScore);
+  controller->controller().datastore().make<std::unordered_map<std::string, bool>>("tableCollision", tableCollision);
   if(!controller->controller().datastore().has("totalScore"))
     controller->controller().datastore().make<double>("totalScore", 0.0);
   if(!controller->controller().datastore().has("taskAchieved"))
@@ -864,7 +900,7 @@ void MjSimImpl::startSimulation()
 
   for(auto & r : robots)
   {
-    r.initialize(model, controller->robot(r.name));
+    r.initialize(model, controller->robot(r.name), config.fix_base_link);
     controller->setEncoderValues(r.name, r.encoders);
   }
   for(const auto & r : robots)
@@ -886,6 +922,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   auto & handsOrientations = controller->controller().datastore().get<std::vector<double>>("handsOrientations");
   auto & mapOfGoalPositions = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalPositions");
   auto & mapOfGoalOrientations = controller->controller().datastore().get<std::unordered_map<int, std::vector<double>>>("mapOfGoalOrientations");
+  auto & tableCollision = controller->controller().datastore().get<std::unordered_map<std::string, bool>>("tableCollision");
   std::chrono::time_point<std::chrono::system_clock> current_time = std::chrono::system_clock::now();
 
   if(firstTime)
@@ -902,10 +939,10 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
 
   for (unsigned int i = 0; i < listOfObjectIndex.size(); i++)
   {
-    int index = listOfObjectIndex[i]*3;
-    targetPositions[i*3] = data->xpos[index];
-    targetPositions[i*3+1] = data->xpos[index+1];
-    targetPositions[i*3+2] = data->xpos[index+2];
+    int index = listOfPosIndex[i]*3;
+    targetPositions[i*3] = data->geom_xpos[index];
+    targetPositions[i*3+1] = data->geom_xpos[index+1];
+    targetPositions[i*3+2] = data->geom_xpos[index+2];
     index = listOfObjectIndex[i]*4;
     targetOrientations[i*4] = data->xquat[index];
     targetOrientations[i*4+1] = data->xquat[index+1];
@@ -1031,7 +1068,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     currentGoalTimer["pour_bottle"] = std::chrono::system_clock::now();
   */                         
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = {targetPositions[panIndex]+0.05, targetPositions[panIndex+1]+0.04, targetPositions[panIndex+2]+0.08}; // Potato in the frypan
+  mapOfGoalPositions[goalIndex] = {frypanTopScorePosition[0]-0.07, frypanTopScorePosition[1]-0.05, frypanTopScorePosition[2]+0.02}; // Potato in the frypan
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
     targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
     newGoalIndex++;
@@ -1095,6 +1132,10 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   for(auto i = currentCollision.begin(); i != currentCollision.end(); i++)
     i->second = false;
   for(auto i = currentEyesContact.begin(); i != currentEyesContact.end(); i++)
+    i->second = false;
+  for(auto i = groundCollision.begin(); i != groundCollision.end(); i++)
+    i->second = false;
+  for(auto i = tableCollision.begin(); i != tableCollision.end(); i++)
     i->second = false;
 
   auto & insideFov = controller->controller().datastore().get<std::vector<bool>>("insideFov");
@@ -1299,15 +1340,20 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
         std::string secondGeom = mapOfGeoms[secondGeomID];
         if(mapOfFreeObjects.find(secondGeom) == mapOfFreeObjects.end())
           continue;
-        int index = mapOfFreeObjects[secondGeom]*7;
-        data->qpos[index] = objectOriginPos[secondGeom][0];
-        data->qpos[index+1] = objectOriginPos[secondGeom][1];
-        data->qpos[index+2] = objectOriginPos[secondGeom][2];
-        data->qpos[index+3] = objectOriginQuat[secondGeom].w();
-        data->qpos[index+4] = objectOriginQuat[secondGeom].x();
-        data->qpos[index+5] = objectOriginQuat[secondGeom].y();
-        data->qpos[index+6] = objectOriginQuat[secondGeom].z();
-        continue;
+        groundCollision[secondGeom] = true;
+        double elapsed_time_d = data->time - groundCollisionTimer[secondGeom];
+        if(elapsed_time_d > 5.0)
+        {
+          int index = mapOfFreeObjects[secondGeom]*7;
+          data->qpos[index] = objectOriginPos[secondGeom][0];
+          data->qpos[index+1] = objectOriginPos[secondGeom][1];
+          data->qpos[index+2] = objectOriginPos[secondGeom][2];
+          data->qpos[index+3] = objectOriginQuat[secondGeom].w();
+          data->qpos[index+4] = objectOriginQuat[secondGeom].x();
+          data->qpos[index+5] = objectOriginQuat[secondGeom].y();
+          data->qpos[index+6] = objectOriginQuat[secondGeom].z();
+          continue;
+        }
       }
     }
     else if(secondGeomID == groundIndex)
@@ -1317,21 +1363,48 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
         std::string firstGeom = mapOfGeoms[firstGeomID];
         if(mapOfFreeObjects.find(firstGeom) == mapOfFreeObjects.end())
           continue;
-        int index = mapOfFreeObjects[firstGeom]*7;
-        data->qpos[index] = objectOriginPos[firstGeom][0];
-        data->qpos[index+1] = objectOriginPos[firstGeom][1];
-        data->qpos[index+2] = objectOriginPos[firstGeom][2];
-        data->qpos[index+3] = objectOriginQuat[firstGeom].w();
-        data->qpos[index+4] = objectOriginQuat[firstGeom].x();
-        data->qpos[index+5] = objectOriginQuat[firstGeom].y();
-        data->qpos[index+6] = objectOriginQuat[firstGeom].z();
+        groundCollision[firstGeom] = true;
+        double elapsed_time_d = data->time - groundCollisionTimer[firstGeom]; 
+        if(elapsed_time_d > 5.0)
+        {
+          int index = mapOfFreeObjects[firstGeom]*7;
+          data->qpos[index] = objectOriginPos[firstGeom][0];
+          data->qpos[index+1] = objectOriginPos[firstGeom][1];
+          data->qpos[index+2] = objectOriginPos[firstGeom][2];
+          data->qpos[index+3] = objectOriginQuat[firstGeom].w();
+          data->qpos[index+4] = objectOriginQuat[firstGeom].x();
+          data->qpos[index+5] = objectOriginQuat[firstGeom].y();
+          data->qpos[index+6] = objectOriginQuat[firstGeom].z();
+          continue;
+        }
+      }
+    }
+    if(firstGeomID == tableIndex)
+    {
+      if(mapOfGeoms.find(secondGeomID) != mapOfGeoms.end())
+      {
+        std::string secondGeom = mapOfGeoms[secondGeomID];
+        if(mapOfFreeObjects.find(secondGeom) == mapOfFreeObjects.end())
+          continue;
+        tableCollision[secondGeom] = true;
+        continue;
+      }
+    }
+    else if(secondGeomID == tableIndex)
+    {
+      if(mapOfGeoms.find(firstGeomID) != mapOfGeoms.end())
+      {
+        std::string firstGeom = mapOfGeoms[firstGeomID];
+        if(mapOfFreeObjects.find(firstGeom) == mapOfFreeObjects.end())
+          continue;
+        tableCollision[firstGeom] = true;
         continue;
       }
     }
 
     elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["cook_potato1"];
-    if(elapsed_time.count() > deltaContact)
-      completedGoals[mapOfGoalNames["cook_potato1"]] = false;
+    //if(elapsed_time.count() > deltaContact)
+    //  completedGoals[mapOfGoalNames["cook_potato1"]] = false;
     if(mapOfGeoms.find(firstGeomID) != mapOfGeoms.end() && mapOfGeoms[firstGeomID] == "potato1")
     {
       if(mapOfGeoms.find(secondGeomID) != mapOfGeoms.end() && mapOfGeoms[secondGeomID] == "pan")
@@ -1372,7 +1445,8 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       
       if(completedGoals[mapOfObjectsNames[i->first]] == true)
       {
-        if((std::chrono::system_clock::now() - noContactTimer[i->first]).count() >= deltaResetGoal)
+        std::chrono::duration<double> elapsed_time_bis = std::chrono::system_clock::now() - noContactTimer[i->first];
+        if(elapsed_time_bis.count() >= deltaResetGoal)
         {
           completedGoals[mapOfObjectsNames[i->first]] = false;
           newGoalAchieved = true;
@@ -1381,7 +1455,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       }
 
     }
-    else if(elapsed_time.count() > deltaContact)
+    else if(elapsed_time.count() > deltaContact && !tableCollision[i->first])
     {
       completedGoals[mapOfObjectsNames[i->first]] = true;
       newGoalAchieved = true;
@@ -1399,16 +1473,33 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     isLookingAt[mapOfObjectsNames[i->first]] = i->second;
   }
 
+  // Teleport back objects on the table after 5 seconds on the ground
+  for(auto i = groundCollision.begin(); i != groundCollision.end(); i++)
+    if(!i->second)
+      groundCollisionTimer[i->first] = data->time;
+    /*else
+    {
+      elapsed_time = std::chrono::system_clock::now() - groundCollisionTimer[i->first];
+      if((std::chrono::system_clock::now() - groundCollisionTimer[i->first]).count() > 5.0)
+      {
+        int index = mapOfFreeObjects[i->first]*7;
+        data->qpos[index] = objectOriginPos[i->first][0];
+        data->qpos[index+1] = objectOriginPos[i->first][1];
+        data->qpos[index+2] = objectOriginPos[i->first][2];
+        data->qpos[index+3] = objectOriginQuat[i->first].w();
+        data->qpos[index+4] = objectOriginQuat[i->first].x();
+        data->qpos[index+5] = objectOriginQuat[i->first].y();
+        data->qpos[index+6] = objectOriginQuat[i->first].z();
+      }
+    }*/
   if(currentCollision["bottle"] && !completedGoals[mapOfGoalNames["pour_bottle"]]){
+    model->geom_group[mapOfScoreGeom["cup"][0]] = 2;
+    model->geom_group[mapOfScoreGeom["cup"][1]] = 2;
     model->geom_group[mapOfScoreGeom["cup"][3]] = 2;
     model->geom_group[mapOfScoreGeom["cup"][4]] = 2;
     computeScore("pour_bottle", 5.0);
   }
-  else{
-    model->geom_group[mapOfScoreGeom["cup"][3]] = 4;
-    model->geom_group[mapOfScoreGeom["cup"][4]] = 4;
-  }
-  if(currentCollision["pitch"] && !completedGoals[mapOfGoalNames["pour_pitch"]]){
+  else if(currentCollision["pitch"] && !completedGoals[mapOfGoalNames["pour_pitch"]]){
     model->geom_group[mapOfScoreGeom["cup"][0]] = 2;
     model->geom_group[mapOfScoreGeom["cup"][1]] = 2;
     computeScore("pour_pitch", 7.0);
@@ -1416,6 +1507,8 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   else{
     model->geom_group[mapOfScoreGeom["cup"][0]] = 4;
     model->geom_group[mapOfScoreGeom["cup"][1]] = 4;
+    model->geom_group[mapOfScoreGeom["cup"][3]] = 4;
+    model->geom_group[mapOfScoreGeom["cup"][4]] = 4;
   } 
   if(currentCollision["salt"] && !completedGoals[mapOfGoalNames["pour_salt"]]){
     model->geom_group[mapOfScoreGeom["pan"][0]] = 2;

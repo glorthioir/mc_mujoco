@@ -149,7 +149,7 @@ struct MjRobot
   std::vector<double> mj_next_ctrl_jointTorque;
 
   /** Initialize some data after the simulation has started */
-  void initialize(mjModel * model, const mc_rbdyn::Robot & robot);
+  void initialize(mjModel * model, const mc_rbdyn::Robot & robot, bool fix_base);
 
   /** Reset the state based on the mc_rtc robot state */
   void reset(const mc_rbdyn::Robot & robot);
@@ -192,11 +192,13 @@ private:
   // Variables for Assisted Teleop
   std::chrono::time_point<std::chrono::system_clock> timer;
   std::vector<int> listOfObjectIndex;
+  std::vector<int> listOfPosIndex;
   std::vector<int> listOfHandIndex;
   bool enableGaze = false;
   int gazeIndex = -1;
   int fovIndex = -2;
   int groundIndex = -3;
+  int tableIndex = -4;
   bool firstTime = true;
   Eigen::Vector3d originGazePos;
   Eigen::Quaterniond originQuat;
@@ -214,10 +216,13 @@ private:
   std::unordered_map<int, std::string> mapOfHandGeoms;
   std::unordered_map<std::string, int> mapOfFreeObjects;
   std::unordered_map<std::string, bool> currentCollision;
+  std::unordered_map<std::string, bool> groundCollision;
+  //std::unordered_map<std::string, bool> tableCollision;
   std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> currentCollisionTimer;
   std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> noContactTimer;
   std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> currentGoalTimer;
   std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> eyesContactTimer;
+  std::unordered_map<std::string, double> groundCollisionTimer;
   std::unordered_map<std::string, bool> currentEyesContact;
 
 

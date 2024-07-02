@@ -4,7 +4,7 @@
 <asset>
   <texture name="halfPotato" file="halfPotato.png" type="2d"/>
   <material name="halfPotato" texture="halfPotato" specular="1" shininess="1"/>
-  <mesh name="halfPotato" file="halfPotato.obj" scale="1.4 1.4 1.4"/>
+  <mesh name="halfPotato" file="halfPotato.obj" scale="1.4 1.4 2.0"/>
 </asset>
 
 <default>
@@ -21,12 +21,14 @@
   <body name="base_link">
     <freejoint name="root"/>
     <inertial pos="0 0.0006 0.02" mass="0.091" diaginertia="0.0000384 0.0000384 0.0000221"/>
-    <geom class="collision" name ="collision" friction="1 0.05 0.005" type="cylinder" size="0.022 0.035" pos="0.0 0.0006 0.03"/>
+    <geom class="collision" name ="collision" friction="1 0.01 0.03" type="cylinder" size="0.021 0.040" pos="0.0 0.0006 0.039"/>
     <geom class="visual" group="1" type="mesh" material="halfPotato" mesh="halfPotato"/>
-    <geom name ="grabbingPos1" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="-0.035 0.0 0.025"/>
+    <geom name ="objectPos" class="visual" group="4" type="sphere" size="0.005"  pos="0.0 0.0 0.025" euler="0 0 0"/>
+    <geom name ="grabbingPos1" class="visual" group="4" type="cylinder" size="0.002 0.005"  pos="0.0 0.0 0.005" euler="0 0 0"/>
+    <!--<geom name ="grabbingPos1" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="-0.035 0.0 0.025"/>
     <geom name ="grabbingPos2" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0.035 0.0 0.025"/>
     <geom name ="grabbingPos3" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 0.035 0.025"/>
-    <geom name ="grabbingPos4" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 -0.035 0.025"/>
+    <geom name ="grabbingPos4" class="visual" group="4" type="cylinder" size="0.005 0.015"  pos="0 -0.035 0.025"/>-->
   </body>
 </worldbody>
 </mujoco>
