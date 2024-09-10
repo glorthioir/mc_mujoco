@@ -160,9 +160,12 @@ static void copy_and_add_prefix(const pugi::xml_node & in,
   for(const auto & c : in.children(name))
   {
     auto c_out = out.append_copy(c);
-    for(const auto & attr : attrs)
+    if(strcmp(name, "connect") != 0)
     {
-      add_prefix(prefix, c_out, attr.c_str());
+      for(const auto & attr : attrs)
+      {
+        add_prefix(prefix, c_out, attr.c_str());
+      }
     }
   }
 }

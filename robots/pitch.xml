@@ -14,6 +14,14 @@
 	<default class="visual">
 		<geom condim="6" conaffinity="0" contype="0" mass="0" gap="10"/>
 	</default>
+	<default class="active_adhesion">
+	  <!--
+	    Geoms in the active_adhesion class are "inflated" with a margin of 1cm, but contacts are
+	    activated only at a depth gap of 1cm, leading to a layer of inactive contacts at a 1cm
+	    distance from the surface. However the contacts can be used by the adhesion actuator.
+	  -->
+	  <geom rgba=".8 .5 .5 1" margin=".01"  gap="0" group="1"/>
+	</default>
 </default>
 
 <worldbody>

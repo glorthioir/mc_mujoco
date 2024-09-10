@@ -194,6 +194,9 @@ private:
   std::vector<int> listOfObjectIndex;
   std::vector<int> listOfPosIndex;
   std::vector<int> listOfHandIndex;
+  std::vector<int> objectHoldingPosIndex;
+  std::vector<int> handScoreIndex;
+  std::vector<int> adhesionGrippers;
   bool enableGaze = false;
   int gazeIndex = -1;
   int fovIndex = -2;
@@ -203,6 +206,10 @@ private:
   Eigen::Vector3d originGazePos;
   Eigen::Quaterniond originQuat;
   double originGazeDistance;
+  double graspingDistance = 0.01;    //square distance
+  double scoreDistance = 0.0015;    //square distance
+  std::string currentlyHoldingRight;
+  std::string currentlyHoldingLeft;
   std::unordered_map<std::string, Eigen::Quaterniond> objectOriginQuat;
   std::unordered_map<std::string, Eigen::Vector3d> objectOriginPos;
   Eigen::Vector3d previousDirectionalVector;
@@ -224,6 +231,7 @@ private:
   std::unordered_map<std::string, std::chrono::time_point<std::chrono::system_clock>> eyesContactTimer;
   std::unordered_map<std::string, double> groundCollisionTimer;
   std::unordered_map<std::string, bool> currentEyesContact;
+  std::unordered_map<std::string, int> goalPouringStep;
 
 
 public:
@@ -310,6 +318,8 @@ public:
   void updateData();
 
   void updateTeleopData(double deltaContact, double deltaTime, double deltaResetGoal, double deltaEyesContact);
+
+  void mj_setConnectAnchor(int i, double pos[3]);
 
   void computeScore(std::string goalName, double deltaContact);
 
