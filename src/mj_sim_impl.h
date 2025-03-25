@@ -197,6 +197,8 @@ private:
   std::vector<int> objectHoldingPosIndex;
   std::vector<int> handScoreIndex;
   std::vector<int> adhesionGrippers;
+  std::vector<int> lContactLessGeoms;
+  std::vector<int> rContactLessGeoms;
   bool enableGaze = false;
   int gazeIndex = -1;
   int fovIndex = -2;
@@ -206,8 +208,8 @@ private:
   Eigen::Vector3d originGazePos;
   Eigen::Quaterniond originQuat;
   double originGazeDistance;
-  double graspingDistance = 0.01;    //square distance
-  double scoreDistance = 0.0015;    //square distance
+  double graspingDistance = 0.01;    //square distance 0.012
+  double scoreDistance = 0.0015;    //square distance 
   std::string currentlyHoldingRight;
   std::string currentlyHoldingLeft;
   std::unordered_map<std::string, Eigen::Quaterniond> objectOriginQuat;

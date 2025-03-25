@@ -21,7 +21,7 @@
   <body name="base_link">
     <freejoint name="root"/>
     <inertial pos="0 0.0006 0.02" mass="0.091" diaginertia="0.0000384 0.0000384 0.0000221"/>
-    <geom class="collision" name ="collision" friction="1 0.05 0.005" type="cylinder" size="0.022 0.035" pos="0.0 0.0006 0.03"/>
+    <geom class="collision" name ="collision" friction="1 0.05 0.005" type="cylinder" size="0.02 0.035" pos="0.0 0.0006 0.03"/>
     <geom class="visual" group="1" type="mesh" material="halfPotato" mesh="halfPotato"/>
     <geom name ="objectPos" class="visual" group="4" type="sphere" size="0.005"  pos="0.0 0.0 0.025" euler="0 0 0"/>
     <geom name ="grabbingPos1" class="visual" group="4" type="cylinder" size="0.002 0.005"  pos="0.0 0.0 0.005" euler="0 0 0"/>

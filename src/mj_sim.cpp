@@ -608,15 +608,25 @@ void MjSimImpl::makeDatastoreCalls()
             mapOfHandGeoms[i] = "palm_r";
             continue;
           }
+          else if(geomName.find("rightAdhesion") == std::string::npos)
+          {
+            model->geom_gap[i] = 10;
+            rContactLessGeoms.push_back(i);
+          }
           mapOfHandGeoms[i] = "hand_r";
           continue;
         }
-        if(geomName.find("handContactl") != std::string::npos || geomName.find("lefttAdhesion") != std::string::npos)
+        if(geomName.find("handContactl") != std::string::npos || geomName.find("leftAdhesion") != std::string::npos)
         {
           if(geomName.find("_palm") != std::string::npos)
           {
             mapOfHandGeoms[i] = "palm_l";
             continue;
+          }
+          else if(geomName.find("leftAdhesion") == std::string::npos)
+          {
+            model->geom_gap[i] = 10;
+            lContactLessGeoms.push_back(i);
           }
           mapOfHandGeoms[i] = "hand_l";
           continue;
@@ -703,7 +713,7 @@ void MjSimImpl::makeDatastoreCalls()
 
   //-------- For advanced goals (pour, cut and cook) --------
 
-  goalsName.push_back("pour_pitch");
+  goalsName.push_back("pour_pitcher");
   goalsName.push_back("pour_bottle");
   //goalsName.push_back("cut_potato");
   goalsName.push_back("cook_potato1");
@@ -712,8 +722,8 @@ void MjSimImpl::makeDatastoreCalls()
   goalsName.push_back("pour_sauce");
   goalsName.push_back("undecided");
   int goalIndex = mapOfGoalPositions.size();
-  mapOfGoalNames["pour_pitch"] = goalIndex;
-  goalPreconditions[goalIndex++] = {mapOfObjectsNames["pitch"]};
+  mapOfGoalNames["pour_pitcher"] = goalIndex;
+  goalPreconditions[goalIndex++] = {mapOfObjectsNames["pitcher"]};
   mapOfGoalNames["pour_bottle"] = goalIndex;
   goalPreconditions[goalIndex++] = {mapOfObjectsNames["bottle"]};
   //goalPreconditions[goalIndex++] = {mapOfObjectsNames["knife"]};
@@ -728,8 +738,8 @@ void MjSimImpl::makeDatastoreCalls()
 
   //Maybe need to design a landmark table here
 
-  goalPouringStep = {{"pour_pitch", 0}, {"pour_bottle", 0}, {"pour_salt", 0}, {"pour_sauce", 0}};
-  currentGoalTimer = {{"pour_pitch", std::chrono::system_clock::now()}, {"pour_bottle", std::chrono::system_clock::now()}, {"cook_potato1", std::chrono::system_clock::now()}, {"pour_salt", std::chrono::system_clock::now()}, {"pour_sauce", std::chrono::system_clock::now()}};
+  goalPouringStep = {{"pour_pitcher", 0}, {"pour_bottle", 0}, {"pour_salt", 0}, {"pour_sauce", 0}};
+  currentGoalTimer = {{"pour_pitcher", std::chrono::system_clock::now()}, {"pour_bottle", std::chrono::system_clock::now()}, {"cook_potato1", std::chrono::system_clock::now()}, {"pour_salt", std::chrono::system_clock::now()}, {"pour_sauce", std::chrono::system_clock::now()}};
   int cupIndex = mapOfObjectsNames["cup"]*3;
   //int potatoIndex = 3*mapOfObjectsNames["potato1"];
   int panIndex = mapOfObjectsNames["pan"]*3;
@@ -737,7 +747,7 @@ void MjSimImpl::makeDatastoreCalls()
   //targetPositions[cupIndex] += 0.1; // moving the target pos of the cup a bit
 
   goalIndex = mapOfGoalPositions.size();
-  mapOfGoalPositions[goalIndex] = {cupTopScorePosition[goalPouringStep["pour_pitch"]*3], cupTopScorePosition[goalPouringStep["pour_pitch"]*3+1], cupTopScorePosition[goalPouringStep["pour_pitch"]*3+2]};  // We want the pitch about 20 cm above the cup
+  mapOfGoalPositions[goalIndex] = {cupTopScorePosition[goalPouringStep["pour_pitcher"]*3], cupTopScorePosition[goalPouringStep["pour_pitcher"]*3+1], cupTopScorePosition[goalPouringStep["pour_pitcher"]*3+2]};  // We want the pitcher about 20 cm above the cup
   mapOfGoalOrientations[goalIndex] = {0.0, 0.0, 0.0, 0.0};
   for(unsigned int i = 0; i < 3; ++i)
     targetPositions.push_back(mapOfGoalPositions[goalIndex][i]);
@@ -803,7 +813,7 @@ void MjSimImpl::makeDatastoreCalls()
     insideFov.push_back(false);
   }
 
-  std::unordered_map<std::string, double> operatorScore{{"pour_pitch", 0.0}, {"pour_bottle", 0.0}, {"pour_salt", 0.0}, {"pour_sauce", 0.0}};
+  std::unordered_map<std::string, double> operatorScore{{"pour_pitcher", 0.0}, {"pour_bottle", 0.0}, {"pour_salt", 0.0}, {"pour_sauce", 0.0}};
 
   controller->controller().datastore().make<std::vector<std::string>>("goalsName", goalsName);
   controller->controller().datastore().make<std::vector<bool>>("completedGoals", completedGoals);
@@ -1032,21 +1042,21 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   int potatoIndex = mapOfObjectsNames["potato1"]*3;
   //int potatoIndex2 = mapOfObjectsNames["potato2"]*3;
   int panIndex = mapOfObjectsNames["pan"]*3;
-  int picthIndex = mapOfObjectsNames["pitch"]*3;
+  int picthIndex = mapOfObjectsNames["pitcher"]*3;
   int bottleIndex = mapOfObjectsNames["bottle"]*3;
   //int knifeIndex = mapOfObjectsNames["knife"]*3;
   int saltIndex = mapOfObjectsNames["salt"]*3;
   int sauceIndex = mapOfObjectsNames["sauce"]*3;
   std::chrono::duration<double> elapsed_time;
-  std::vector<double> cupTopScorePositionPitch;
+  std::vector<double> cupTopScorePositionPitcher;
   std::vector<double> cupTopScorePositionBottle;
   std::vector<double> frypanTopScorePositionSalt;
   std::vector<double> frypanTopScorePositionSauce;
 
   for (unsigned cpt = 0; cpt < 3; cpt++)
-    cupTopScorePositionPitch.push_back(data->geom_xpos[mapOfScoreGeom["cup"][goalPouringStep["pour_pitch"]*3]*3+cpt]);
+    cupTopScorePositionPitcher.push_back(data->geom_xpos[mapOfScoreGeom["cup"][goalPouringStep["pour_pitcher"]*3]*3+cpt]);
   for (unsigned cpt = 0; cpt < 3; cpt++)
-    cupTopScorePositionPitch.push_back(data->geom_xpos[mapOfScoreGeom["cup"][goalPouringStep["pour_pitch"]*3+9]*3+cpt]);
+    cupTopScorePositionPitcher.push_back(data->geom_xpos[mapOfScoreGeom["cup"][goalPouringStep["pour_pitcher"]*3+9]*3+cpt]);
   for (unsigned cpt = 0; cpt < 3; cpt++)
     cupTopScorePositionBottle.push_back(data->geom_xpos[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3]*3+cpt]);
   for (unsigned cpt = 0; cpt < 3; cpt++)
@@ -1056,7 +1066,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   for (unsigned cpt = 0; cpt < 3; cpt++)
     frypanTopScorePositionSauce.push_back(data->geom_xpos[mapOfScoreGeom["pan"][goalPouringStep["pour_sauce"]*3]*3+cpt]);
 
-  mapOfGoalPositions[goalIndex] = cupTopScorePositionPitch;  // We want the pitch about 15 cm above the cup 
+  mapOfGoalPositions[goalIndex] = cupTopScorePositionPitcher;  // We want the pitcher about 15 cm above the cup 
   int newGoalIndex = goalIndex*3;
   double squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[picthIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[picthIndex]) + 
                           (mapOfGoalPositions[goalIndex][1] - targetPositions[picthIndex+1])*(mapOfGoalPositions[goalIndex][1] - targetPositions[picthIndex+1]) +
@@ -1076,35 +1086,36 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
       targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
       newGoalIndex++;
     }
-    if(goalPouringStep["pour_pitch"] == 0)
+    if(goalPouringStep["pour_pitcher"] == 0)
     {
       //mapOfGoalPositions[goalIndex][0] += 0;
-      mapOfGoalPositions[goalIndex][1] -= 0.015;    
-      mapOfGoalPositions[goalIndex][2] -= 0.01;
+      //mapOfGoalPositions[goalIndex][1] -= 0.01;    
+      //mapOfGoalPositions[goalIndex][2] -= 0.15;
       mapOfGoalPositions[goalIndex][4] -= 1.5;    //To avoid switching target
     }
-    else if(goalPouringStep["pour_pitch"] == 1)
+    else if(goalPouringStep["pour_pitcher"] == 1)
     {
+      mapOfGoalPositions[goalIndex][2] += 0.05;
       mapOfGoalPositions[goalIndex][4] -= 1.5;    //To avoid switching target
     }
-    else if(goalPouringStep["pour_pitch"] == 2)
+    else if(goalPouringStep["pour_pitcher"] == 2)
     {
       //mapOfGoalPositions[goalIndex][0] += 0;
       //mapOfGoalPositions[goalIndex][1] += 0;    
-      //mapOfGoalPositions[goalIndex][2] += 0;
+      mapOfGoalPositions[goalIndex][2] += 0.08;
       mapOfGoalPositions[goalIndex][4] -= 1.5;    //To avoid switching target
     }
   }
   /*
   if(squareDistance < 0.04){
-    elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["pour_pitch"];
+    elapsed_time = std::chrono::system_clock::now() - currentGoalTimer["pour_pitcher"];
     if(elapsed_time.count() > deltaTime && !completedGoals[goalIndex]){
       completedGoals[goalIndex] = true;
       newGoalAchieved = true;
     }
   }
   else
-    currentGoalTimer["pour_pitch"] = std::chrono::system_clock::now();
+    currentGoalTimer["pour_pitcher"] = std::chrono::system_clock::now();
   */
   goalIndex++;
   mapOfGoalPositions[goalIndex] = cupTopScorePositionBottle; // We want the bottle about 15 cm above the cup
@@ -1123,23 +1134,23 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     if(goalPouringStep["pour_bottle"] == 0)
     {
       mapOfGoalPositions[goalIndex][1] += 1.5;    //To avoid switching target
-      mapOfGoalPositions[goalIndex][3] += 0.28;
-      mapOfGoalPositions[goalIndex][4] += 0.25;
-      mapOfGoalPositions[goalIndex][5] -= 0.15;
+      mapOfGoalPositions[goalIndex][3] += 0.02;
+      //mapOfGoalPositions[goalIndex][4] += 0.25;
+      //mapOfGoalPositions[goalIndex][5] -= 0.10;
     }
     else if(goalPouringStep["pour_bottle"] == 1)
     {
       mapOfGoalPositions[goalIndex][1] += 1.5;    //To avoid switching target
-      mapOfGoalPositions[goalIndex][3] -= 0.08;
-      mapOfGoalPositions[goalIndex][4] -= 0.12;
-      mapOfGoalPositions[goalIndex][5] += 0.17;
+      //mapOfGoalPositions[goalIndex][3] -= 0.02;
+      mapOfGoalPositions[goalIndex][4] -= 0.03;
+      mapOfGoalPositions[goalIndex][5] += 0.06;
     }
     else if(goalPouringStep["pour_bottle"] == 2)
     {
       mapOfGoalPositions[goalIndex][1] += 1.5;    //To avoid switching target
-      mapOfGoalPositions[goalIndex][3] -= 0.27;
-      mapOfGoalPositions[goalIndex][4] -= 0.32;
-      mapOfGoalPositions[goalIndex][5] += 0.28;
+      mapOfGoalPositions[goalIndex][3] -= 0.03;
+      mapOfGoalPositions[goalIndex][4] -= 0.03;
+      mapOfGoalPositions[goalIndex][5] += 0.13;
     }
   }
   else{
@@ -1149,20 +1160,21 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     }
     if(goalPouringStep["pour_bottle"] == 0)
     {
-      //mapOfGoalPositions[goalIndex][0] += 0;
-      mapOfGoalPositions[goalIndex][1] -= 0.015;    
-      mapOfGoalPositions[goalIndex][2] -= 0.01;
+      mapOfGoalPositions[goalIndex][0] += 0.02;
+      //mapOfGoalPositions[goalIndex][1] -= 0.01;    
+      //mapOfGoalPositions[goalIndex][2] += 0.02;
       mapOfGoalPositions[goalIndex][4] -= 1.5;    //To avoid switching target
     }
     else if(goalPouringStep["pour_bottle"] == 1)
     {
+      mapOfGoalPositions[goalIndex][2] += 0.06;
       mapOfGoalPositions[goalIndex][4] -= 1.5;    //To avoid switching target
     }
     else if(goalPouringStep["pour_bottle"] == 2)
     {
-      //mapOfGoalPositions[goalIndex][0] += 0;
+      mapOfGoalPositions[goalIndex][0] -= 0.03;
       //mapOfGoalPositions[goalIndex][1] += 0;    
-      //mapOfGoalPositions[goalIndex][2] += 0;
+      mapOfGoalPositions[goalIndex][2] += 0.13;
       mapOfGoalPositions[goalIndex][4] -= 1.5;    //To avoid switching target
     }
   }
@@ -1178,7 +1190,7 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     currentGoalTimer["pour_bottle"] = std::chrono::system_clock::now();
   */                         
   goalIndex++;
-  mapOfGoalPositions[goalIndex] = {targetPositions[panIndex]+0.06, targetPositions[panIndex+1]-0.06, targetPositions[panIndex+2]+0.19}; // Potato in the frypan
+  mapOfGoalPositions[goalIndex] = {targetPositions[panIndex]+0.08, targetPositions[panIndex+1]+0.03, targetPositions[panIndex+2]+0.13}; // Potato in the frypan
   for(unsigned int cpt = 0; cpt < 3; ++cpt){
     targetPositions[newGoalIndex] = mapOfGoalPositions[goalIndex][cpt];
     newGoalIndex++;
@@ -1205,16 +1217,16 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   }
   if(goalPouringStep["pour_salt"] == 0)
   {
-    mapOfGoalPositions[goalIndex][2] -= 0.01;
+    //mapOfGoalPositions[goalIndex][2] -= 0.01;
   }
   else if(goalPouringStep["pour_salt"] == 1)
   {
-    mapOfGoalPositions[goalIndex][0] += 0.04;
+    mapOfGoalPositions[goalIndex][1] -= 0.02;
   }
   else if(goalPouringStep["pour_salt"] == 2)
   {
-    mapOfGoalPositions[goalIndex][0] += 0.01;
-    mapOfGoalPositions[goalIndex][2] -= 0.015;
+    //mapOfGoalPositions[goalIndex][0] += 0.03;
+    //mapOfGoalPositions[goalIndex][1] += 0.05;
   }
   /*
   squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[saltIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[saltIndex]) + 
@@ -1238,16 +1250,16 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
   }
   if(goalPouringStep["pour_sauce"] == 0)
   {
-    mapOfGoalPositions[goalIndex][2] -= 0.01;
+    mapOfGoalPositions[goalIndex][0] -= 0.02;
   }
   else if(goalPouringStep["pour_sauce"] == 1)
   {
-    mapOfGoalPositions[goalIndex][0] += 0.04;
+    mapOfGoalPositions[goalIndex][1] -= 0.02;
   }
   else if(goalPouringStep["pour_sauce"] == 2)
   {
-    mapOfGoalPositions[goalIndex][0] += 0.01;
-    mapOfGoalPositions[goalIndex][2] -= 0.015;
+    //mapOfGoalPositions[goalIndex][0] += 0.03;
+    //mapOfGoalPositions[goalIndex][1] += 0.05;
   }
   /*
   squareDistance = (mapOfGoalPositions[goalIndex][0] - targetPositions[sauceIndex])*(mapOfGoalPositions[goalIndex][0] - targetPositions[sauceIndex]) + 
@@ -1620,6 +1632,8 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     model->actuator_ctrlrange[adhesionGrippers[0]*2] = 0;
     model->actuator_ctrlrange[adhesionGrippers[1]*2+1] = 0.01;
     model->actuator_ctrlrange[adhesionGrippers[1]*2] = 0;
+    for(unsigned int i = 0; i < rContactLessGeoms.size(); i++)
+      model->geom_gap[rContactLessGeoms[i]] = 10.0;
   }
   else if(currentlyHoldingRight == "sauce")
   {
@@ -1629,6 +1643,8 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     if(distance3D < scoreDistance)
       for(unsigned int i = 0; i < 3; i++)
         currentCollisionScore["pan"][i] = true;
+    for(unsigned int i = 0; i < rContactLessGeoms.size(); i++)
+      model->geom_gap[rContactLessGeoms[i]] = 0.0;
   }
   else if(currentlyHoldingRight == "salt")
   {
@@ -1638,7 +1654,8 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     if(distance3D < scoreDistance)
       for(unsigned int i = 0; i < 3; i++)
         currentCollisionScore["pan"][i] = true;
-    std::cout << "Distance: " << distance3D << std::endl; 
+    for(unsigned int i = 0; i < rContactLessGeoms.size(); i++)
+      model->geom_gap[rContactLessGeoms[i]] = 0.0; 
   }
   else if(currentlyHoldingRight == "bottle")
   {
@@ -1651,6 +1668,13 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     if(distance3D < scoreDistance || distance3Dbis < scoreDistance)
       for(unsigned int i = 0; i < 3; i++)
         currentCollisionScore["cup"][i] = true;
+    for(unsigned int i = 0; i < rContactLessGeoms.size(); i++)
+      model->geom_gap[rContactLessGeoms[i]] = 0.0;
+  }
+  else
+  {
+    for(unsigned int i = 0; i < rContactLessGeoms.size(); i++)
+      model->geom_gap[rContactLessGeoms[i]] = 0.0;
   }
 
 
@@ -1661,6 +1685,8 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     model->actuator_ctrlrange[adhesionGrippers[2]*2] = 0;
     model->actuator_ctrlrange[adhesionGrippers[3]*2+1] = 0.01;
     model->actuator_ctrlrange[adhesionGrippers[3]*2] = 0;
+    for(unsigned int i = 0; i < lContactLessGeoms.size(); i++)
+      model->geom_gap[lContactLessGeoms[i]] = 10.0;
   }
   else if(currentlyHoldingLeft == "bottle")
   {
@@ -1673,18 +1699,27 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     if(distance3D < scoreDistance || distance3Dbis < scoreDistance)
       for(unsigned int i = 0; i < 3; i++)
         currentCollisionScore["cup"][i] = true;
+    for(unsigned int i = 0; i < lContactLessGeoms.size(); i++)
+      model->geom_gap[lContactLessGeoms[i]] = 0.0;
   }
-  else if(currentlyHoldingLeft == "pitch")
+  else if(currentlyHoldingLeft == "pitcher")
   {
-    double distance3D = (data->geom_xpos[handIndex] - cupTopScorePositionPitch[0])*(data->geom_xpos[handIndex] - cupTopScorePositionPitch[0]) + 
-                        (data->geom_xpos[handIndex+1] - cupTopScorePositionPitch[1])*(data->geom_xpos[handIndex+1] - cupTopScorePositionPitch[1]) +
-                        (data->geom_xpos[handIndex+2] - cupTopScorePositionPitch[2])*(data->geom_xpos[handIndex+2] - cupTopScorePositionPitch[2]);
-    double distance3Dbis = (data->geom_xpos[handIndex] - cupTopScorePositionPitch[3])*(data->geom_xpos[handIndex] - cupTopScorePositionPitch[3]) + 
-                        (data->geom_xpos[handIndex+1] - cupTopScorePositionPitch[4])*(data->geom_xpos[handIndex+1] - cupTopScorePositionPitch[4]) +
-                        (data->geom_xpos[handIndex+2] - cupTopScorePositionPitch[5])*(data->geom_xpos[handIndex+2] - cupTopScorePositionPitch[5]);
+    double distance3D = (data->geom_xpos[handIndex] - cupTopScorePositionPitcher[0])*(data->geom_xpos[handIndex] - cupTopScorePositionPitcher[0]) + 
+                        (data->geom_xpos[handIndex+1] - cupTopScorePositionPitcher[1])*(data->geom_xpos[handIndex+1] - cupTopScorePositionPitcher[1]) +
+                        (data->geom_xpos[handIndex+2] - cupTopScorePositionPitcher[2])*(data->geom_xpos[handIndex+2] - cupTopScorePositionPitcher[2]);
+    double distance3Dbis = (data->geom_xpos[handIndex] - cupTopScorePositionPitcher[3])*(data->geom_xpos[handIndex] - cupTopScorePositionPitcher[3]) + 
+                        (data->geom_xpos[handIndex+1] - cupTopScorePositionPitcher[4])*(data->geom_xpos[handIndex+1] - cupTopScorePositionPitcher[4]) +
+                        (data->geom_xpos[handIndex+2] - cupTopScorePositionPitcher[5])*(data->geom_xpos[handIndex+2] - cupTopScorePositionPitcher[5]);
     if(distance3D < scoreDistance || distance3Dbis < scoreDistance)
       for(unsigned int i = 0; i < 3; i++)
         currentCollisionScore["cup"][i] = true;
+    for(unsigned int i = 0; i < lContactLessGeoms.size(); i++)
+      model->geom_gap[lContactLessGeoms[i]] = 0.0;
+  }
+  else
+  {
+    for(unsigned int i = 0; i < lContactLessGeoms.size(); i++)
+      model->geom_gap[lContactLessGeoms[i]] = 0.0;
   }
 
   elapsed_time = std::chrono::system_clock::now() - current_time;
@@ -1749,30 +1784,30 @@ void MjSimImpl::updateTeleopData(double deltaContact, double deltaTime, double d
     model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3+1]] = 2;
     model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3+9]] = 2;
     model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3+10]] = 2;
-    computeScore("pour_bottle", 1.8);
+    computeScore("pour_bottle", 2.0);
   }
-  else if(currentCollision["pitch"] && !completedGoals[mapOfGoalNames["pour_pitch"]]){
-    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitch"]*3+0]] = 2;
-    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitch"]*3+1]] = 2;
-    computeScore("pour_pitch", 2.0);
+  else if(currentCollision["pitcher"] && !completedGoals[mapOfGoalNames["pour_pitcher"]]){
+    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitcher"]*3+0]] = 2;
+    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitcher"]*3+1]] = 2;
+    computeScore("pour_pitcher", 2.0);
   }
   else{
     model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3+0]] = 4;
     model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3+1]] = 4;
     model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3+9]] = 4;
     model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_bottle"]*3+10]] = 4;
-    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitch"]*3+0]] = 4;
-    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitch"]*3+1]] = 4;
+    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitcher"]*3+0]] = 4;
+    model->geom_group[mapOfScoreGeom["cup"][goalPouringStep["pour_pitcher"]*3+1]] = 4;
   } 
   if(currentCollision["salt"] && !completedGoals[mapOfGoalNames["pour_salt"]]){
     model->geom_group[mapOfScoreGeom["pan"][goalPouringStep["pour_salt"]*3+0]] = 2;
     model->geom_group[mapOfScoreGeom["pan"][goalPouringStep["pour_salt"]*3+1]] = 2;
-    computeScore("pour_salt", 1.8);
+    computeScore("pour_salt", 2.0);
   }
   else if(currentCollision["sauce"] && !completedGoals[mapOfGoalNames["pour_sauce"]]){
     model->geom_group[mapOfScoreGeom["pan"][goalPouringStep["pour_sauce"]*3+0]] = 2;
     model->geom_group[mapOfScoreGeom["pan"][goalPouringStep["pour_sauce"]*3+1]] = 2;
-    computeScore("pour_sauce", 1.8);
+    computeScore("pour_sauce", 2.0);
   }
   else{
     model->geom_group[mapOfScoreGeom["pan"][goalPouringStep["pour_salt"]*3+0]] = 4;
@@ -2409,7 +2444,7 @@ void MjSimImpl::computeScore(std::string goalName, double deltaContact)
   std::vector<bool> boolTab;
   std::string geomName;
 
-  if(goalName.compare("pour_bottle") == 0 || goalName.compare("pour_pitch") == 0)
+  if(goalName.compare("pour_bottle") == 0 || goalName.compare("pour_pitcher") == 0)
   {
     boolTab = currentCollisionScore["cup"];
     geomName ="cup"; 
@@ -2429,7 +2464,6 @@ void MjSimImpl::computeScore(std::string goalName, double deltaContact)
     {
       if(j%3 == 0)
       {
-        newScore = 100;
         model->geom_group[mapOfScoreGeom[geomName][goalPouringStep[goalName]*3+j]] = 4;
         model->geom_group[mapOfScoreGeom[geomName][goalPouringStep[goalName]*3+j+1]] = 4;
         if(mapOfScoreGeom[geomName].size() > 9)
@@ -2445,6 +2479,7 @@ void MjSimImpl::computeScore(std::string goalName, double deltaContact)
           completedGoals[mapOfGoalNames[goalName]] = true;
           newGoalAchieved = true;
           goalPouringStep[goalName] = 0;
+          newScore = 100;
         }
         for(unsigned int cpt = 0; cpt < currentCollisionScoreTimer[geomName].size(); cpt++)
           currentCollisionScoreTimer[geomName][cpt] = std::chrono::system_clock::now();

@@ -1,0 +1,26 @@
+<mujoco model="rayCast">
+	<compiler inertiafromgeom="true" />
+    <asset>
+	<texture name="texgeom" type="cube" builtin="flat" mark="cross" width="128" height="128"
+		 rgb1="0.3 0.3 0.3" rgb2="0.6 0.6 0.6" markrgb="1 1 1"/>
+	<material name="object" texture="texgeom" texuniform="true" rgba=".4 .9 .6 1" />
+    </asset>
+
+    <default>
+        <default class="collision">
+            <geom condim="1" group="4"/>
+        </default>
+        <default class="visual">
+            <geom condim="6" group="4" conaffinity="0" contype="0" mass="0" gap="10"/>
+        </default>
+    </default>
+
+    <worldbody>
+      <body name="base_link">
+        <freejoint name="root" />
+        <inertial pos="0 0 0" mass="0.0"/>
+        <geom class="collision" type ="ellipsoid" size="1.25 0.08 0.08"/>
+      </body>
+    </worldbody>
+</mujoco>
+

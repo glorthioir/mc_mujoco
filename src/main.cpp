@@ -10,6 +10,7 @@
 #include <cmath>
 #include <iostream>
 #include <thread>
+#include <random>
 
 #include <boost/program_options.hpp>
 namespace po = boost::program_options;
@@ -20,7 +21,7 @@ std::chrono::duration<double> elapsed_time;
 int framerate = 33;    // About 30fps actually
 double frequency = 1.0/framerate;
 
-const double delay_seconds = 1.0;
+double delay_seconds = 0.0;
 std::queue<cv::Mat> buffer_left;
 std::queue<cv::Mat> buffer_right;
 
